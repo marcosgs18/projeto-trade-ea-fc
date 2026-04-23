@@ -31,7 +31,11 @@ public sealed class SbcChallengeRepository : ISbcChallengeRepository
             return;
         }
 
-        var ids = incoming.Select(c => c.Id).ToArray();
+        // Use List<Guid> (not Guid[]) so EF's expression funcletizer doesn't
+        // pick the ReadOnlySpan<Guid> Contains overload, which breaks under
+        // the .NET 9 expression interpreter on Linux (TRet can't be a ref
+        // struct when compiling the lambda via FuncCallInstruction).
+        var ids = incoming.Select(c => c.Id).ToList();
 
         // Load only the parent records (no Include). Requirements are treated
         // as a value list: we drop the whole child set server-side via
@@ -46,8 +50,9 @@ public sealed class SbcChallengeRepository : ISbcChallengeRepository
 
         if (existingById.Count > 0)
         {
+            var existingIds = existingById.Keys.ToList();
             await _dbContext.SbcChallengeRequirements
-                .Where(r => existingById.Keys.Contains(r.ChallengeId))
+                .Where(r => existingIds.Contains(r.ChallengeId))
                 .ExecuteDeleteAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -124,9 +129,12 @@ public sealed class SbcChallengeRepository : ISbcChallengeRepository
 
         if (query.MatchesOverall is { } overall)
         {
+            // List<string> (not string[]) for the same reason as the ids above:
+            // avoids the ReadOnlySpan<string> Contains overload that breaks the
+            // .NET 9 expression interpreter on Linux CI.
             var keys = SbcChallengeQuery.TeamRatingRequirementKeys
                 .Select(k => k.ToLowerInvariant())
-                .ToArray();
+                .ToList();
             q = q.Where(c => c.Requirements.Any(r =>
                 keys.Contains(r.Key.ToLower()) && r.Minimum <= overall));
         }
