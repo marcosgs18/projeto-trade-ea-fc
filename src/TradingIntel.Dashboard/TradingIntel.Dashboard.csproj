@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>TradingIntel.Dashboard</RootNamespace>
+    <AssemblyName>TradingIntel.Dashboard</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TradingIntel.Application\TradingIntel.Application.csproj" />
+    <ProjectReference Include="..\TradingIntel.Infrastructure\TradingIntel.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
