@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using TradingIntel.Domain.Models;
 using TradingIntel.Domain.ValueObjects;
@@ -15,7 +16,7 @@ public sealed class FutGgSbcMapper
         _logger = logger;
     }
 
-    public SbcChallenge Map(FutGgSbcListingItemParsed parsed)
+    public SbcChallenge Map(FutGgSbcListingItemParsed parsed, DateTime observedAtUtc)
     {
         try
         {
@@ -26,11 +27,7 @@ public sealed class FutGgSbcMapper
                     ? SbcRepeatability.Unknown()
                     : SbcRepeatability.Limited(parsed.RepeatableCount.Value);
 
-            // We don't have visible requirements from listing in this data source; keep a sentinel requirement.
-            var requirements = new[]
-            {
-                new SbcRequirement("visible_requirements", 0)
-            };
+            var requirements = MapRequirements(parsed.RequirementLines);
 
             return new SbcChallenge(
                 id: id,
@@ -39,7 +36,7 @@ public sealed class FutGgSbcMapper
                 expiresAtUtc: parsed.ExpiresAtUtc,
                 repeatability: repeatability,
                 setName: "futgg",
-                observedAtUtc: DateTime.UtcNow,
+                observedAtUtc: observedAtUtc,
                 requirements: requirements);
         }
         catch (Exception ex)
@@ -62,6 +59,41 @@ public sealed class FutGgSbcMapper
         guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80);
 
         return new Guid(guidBytes);
+    }
+
+    private static IReadOnlyList<SbcRequirement> MapRequirements(IReadOnlyList<string> lines)
+    {
+        if (lines.Count == 0)
+        {
+            return new[] { new SbcRequirement("visible_requirements", 0) };
+        }
+
+        var requirements = new List<SbcRequirement>(lines.Count);
+        foreach (var raw in lines)
+        {
+            var key = BuildKey(raw);
+            var minimum = ExtractFirstInteger(raw) ?? 1;
+            requirements.Add(new SbcRequirement(key, minimum));
+        }
+
+        return requirements;
+    }
+
+    private static int? ExtractFirstInteger(string text)
+    {
+        var match = Regex.Match(text, @"\d+");
+        return match.Success ? int.Parse(match.Value) : null;
+    }
+
+    private static string BuildKey(string text)
+    {
+        var normalized = text.ToLowerInvariant();
+        var chars = normalized
+            .Select(c => char.IsLetterOrDigit(c) ? c : '_')
+            .ToArray();
+
+        var collapsed = Regex.Replace(new string(chars), "_{2,}", "_").Trim('_');
+        return string.IsNullOrWhiteSpace(collapsed) ? "visible_requirement" : collapsed;
     }
 }
 

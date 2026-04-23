@@ -19,14 +19,15 @@ public sealed class FutGgSbcMapperTests
             ExpiresAtUtc: new DateTime(2026, 04, 29, 0, 0, 0, DateTimeKind.Utc),
             RepeatableCount: 3,
             RepeatableUnlimited: false,
-            RequirementLines: Array.Empty<string>());
+            RequirementLines: new[] { "Min. Team Rating: 83", "Exactly 11 Players: Rare" });
 
-        var challenge = mapper.Map(parsed);
+        var challenge = mapper.Map(parsed, new DateTime(2026, 04, 22, 10, 0, 0, DateTimeKind.Utc));
 
         challenge.Title.Should().Be("2x 86+ Upgrade");
         challenge.Category.Should().Be("upgrades");
         challenge.ExpiresAtUtc.Should().NotBeNull();
-        challenge.Requirements.Should().NotBeEmpty();
+        challenge.Requirements.Should().HaveCount(2);
+        challenge.Requirements.Should().Contain(r => r.Key.Contains("team_rating") && r.Minimum == 83);
     }
 }
 

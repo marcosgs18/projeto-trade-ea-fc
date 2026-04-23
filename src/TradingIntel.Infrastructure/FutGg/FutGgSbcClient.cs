@@ -50,10 +50,51 @@ public sealed class FutGgSbcClient : IFutGgSbcClient
         var parser = new FutGgSbcListingParser(_logger);
         var parsed = parser.ParseListing(payload, capturedAtUtc);
 
+        var detailParser = new FutGgSbcDetailParser(_logger);
+        var enrichedItems = new List<FutGgSbcListingItemParsed>(parsed.Count);
+
+        foreach (var item in parsed)
+        {
+            var detailPayload = await TryGetDetailPayloadAsync(item.DetailsUrl, cancellationToken);
+            if (detailPayload is null)
+            {
+                enrichedItems.Add(item);
+                continue;
+            }
+
+            var requirementLines = detailParser.ParseVisibleRequirements(detailPayload);
+            enrichedItems.Add(item with { RequirementLines = requirementLines });
+        }
+
         var mapper = new FutGgSbcMapper(_logger);
-        var challenges = parsed.Select(mapper.Map).ToArray();
+        var challenges = enrichedItems.Select(item => mapper.Map(item, capturedAtUtc)).ToArray();
 
         return new FutGgSbcListingSnapshot(SourceName, capturedAtUtc, correlationId, payload, challenges);
+    }
+
+    private async Task<string?> TryGetDetailPayloadAsync(string detailsUrl, CancellationToken cancellationToken)
+    {
+        var renderedUrl = $"https://r.jina.ai/{detailsUrl}";
+
+        try
+        {
+            var payload = await _httpClient.GetStringAsync(renderedUrl, cancellationToken);
+
+            var metadata = new SourceSnapshotMetadata(
+                SourceName,
+                DateTime.UtcNow,
+                recordCount: 1,
+                correlationId: Guid.NewGuid().ToString("N"),
+                payloadHash: SourceSnapshotMetadata.ComputePayloadHash(payload));
+
+            await _rawSnapshotStore.SaveAsync(metadata, payload, cancellationToken);
+            return payload;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch FUT.GG SBC detail. url={Url}", detailsUrl);
+            return null;
+        }
     }
 }
 
