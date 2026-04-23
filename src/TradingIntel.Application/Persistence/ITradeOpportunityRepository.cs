@@ -18,4 +18,12 @@ public interface ITradeOpportunityRepository
     Task<int> MarkStaleWhereLastRecomputedBeforeAsync(DateTime cutoffUtc, CancellationToken cancellationToken);
 
     Task<bool> ExistsForPlayerAsync(long playerId, CancellationToken cancellationToken);
+
+    Task<(IReadOnlyList<TradeOpportunityStoredView> Items, int TotalCount)> QueryPagedAsync(
+        TradeOpportunityListFilter filter,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
+
+    Task<TradeOpportunityStoredView?> GetByOpportunityIdAsync(Guid opportunityId, CancellationToken cancellationToken);
 }

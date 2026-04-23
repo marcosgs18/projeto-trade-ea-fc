@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using TradingIntel.Application.Futbin;
 using TradingIntel.Application.Persistence;
 using TradingIntel.Domain.ValueObjects;
-using TradingIntel.Worker.Health;
+using TradingIntel.Application.JobHealth;
 
 namespace TradingIntel.Worker.Jobs;
 

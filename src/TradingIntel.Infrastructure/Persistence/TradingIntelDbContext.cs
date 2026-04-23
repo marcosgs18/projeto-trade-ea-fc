@@ -92,14 +92,17 @@ public sealed class TradingIntelDbContext : DbContext
         {
             entity.ToTable("trade_opportunities");
             entity.HasKey(e => e.PlayerId);
+            entity.Property(e => e.PlayerId).ValueGeneratedNever();
             entity.Property(e => e.PlayerDisplayName).IsRequired().HasMaxLength(256);
             entity.Property(e => e.ExpectedBuyPrice).HasColumnType("TEXT");
             entity.Property(e => e.ExpectedSellPrice).HasColumnType("TEXT");
+            entity.Property(e => e.ExpectedNetMargin).HasColumnType("TEXT");
             entity.Property(e => e.Confidence).HasColumnType("TEXT");
             entity.Property(e => e.ReasonsJson).IsRequired();
             entity.Property(e => e.SuggestionsJson).IsRequired();
             entity.HasIndex(e => e.LastRecomputedAtUtc).HasDatabaseName("ix_trade_opportunities_last_recomputed");
             entity.HasIndex(e => e.IsStale).HasDatabaseName("ix_trade_opportunities_is_stale");
+            entity.HasIndex(e => e.OpportunityId).HasDatabaseName("ix_trade_opportunities_opportunity_id");
         });
     }
 }

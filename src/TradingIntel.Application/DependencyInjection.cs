@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using TradingIntel.Application.JobHealth;
 using TradingIntel.Application.Sbc;
 using TradingIntel.Application.Trading;
 
@@ -8,6 +9,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
+        services.AddSingleton<IJobHealthRegistry, InMemoryJobHealthRegistry>();
+
         services.AddSingleton(RatingBandDemandWeights.Default);
         services.AddScoped<IRatingBandDemandService, RatingBandDemandService>();
 

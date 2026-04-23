@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TradingIntel.Application.Trading;
-using TradingIntel.Worker.Health;
 using TradingIntel.Worker.Jobs;
 
 namespace TradingIntel.Worker;
@@ -16,8 +15,6 @@ public static class WorkerServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddCollectionJobs(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddSingleton<IJobHealthRegistry, InMemoryJobHealthRegistry>();
-
         services
             .AddOptions<SbcCollectionOptions>()
             .Bind(configuration.GetSection("Jobs:SbcCollection"));

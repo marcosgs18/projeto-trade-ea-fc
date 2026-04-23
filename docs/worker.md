@@ -15,11 +15,13 @@ Host genérico (`Microsoft.Extensions.Hosting`) que agenda e executa jobs de col
 ## Arquitetura
 
 ```
+TradingIntel.Application
+└── JobHealth/                         # registry de health dos jobs (compartilhado com a API)
+    ├── IJobHealthRegistry.cs
+    ├── InMemoryJobHealthRegistry.cs
+    └── JobHealthSnapshot.cs
+
 TradingIntel.Worker
-├── Health/
-│   ├── IJobHealthRegistry.cs          # contrato
-│   ├── InMemoryJobHealthRegistry.cs   # impl singleton, thread-safe
-│   └── JobHealthSnapshot.cs           # snapshot imutável de estado
 ├── Jobs/
 │   ├── JobScheduleOptions.cs          # knobs bound do config (Enabled, Interval, …)
 │   ├── ScheduledJob.cs                # base abstrata (PeriodicTimer + backoff + health)

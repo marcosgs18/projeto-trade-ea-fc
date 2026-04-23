@@ -1,4 +1,4 @@
-namespace TradingIntel.Worker.Health;
+namespace TradingIntel.Application.JobHealth;
 
 /// <summary>
 /// Point-in-time view of a job's execution health used for internal diagnostics

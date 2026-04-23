@@ -14,6 +14,8 @@ internal sealed class TradeOpportunityRecord
 
     public decimal ExpectedSellPrice { get; set; }
 
+    public decimal ExpectedNetMargin { get; set; }
+
     public decimal Confidence { get; set; }
 
     public string ReasonsJson { get; set; } = string.Empty;

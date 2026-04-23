@@ -30,4 +30,13 @@ public interface IPlayerPriceSnapshotRepository
         DateTime fromUtc,
         DateTime toUtc,
         CancellationToken cancellationToken);
+
+    Task<(IReadOnlyList<PlayerPriceSnapshot> Items, int TotalCount)> GetByPlayerPagedAsync(
+        long playerId,
+        string? source,
+        DateTime fromUtc,
+        DateTime toUtc,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
 }

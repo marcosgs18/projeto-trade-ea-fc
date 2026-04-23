@@ -173,12 +173,22 @@ public sealed class OpportunityRecomputeServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult(LatestFutbin);
 
-        public Task<IReadOnlyList<PlayerPriceSnapshot>> GetFutbinPriceHistoryAsync(
+    public Task<IReadOnlyList<PlayerPriceSnapshot>> GetFutbinPriceHistoryAsync(
+        long playerId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PlayerPriceSnapshot>>(Array.Empty<PlayerPriceSnapshot>());
+
+        public Task<(IReadOnlyList<PlayerPriceSnapshot> Items, int TotalCount)> GetByPlayerPagedAsync(
             long playerId,
+            string? source,
             DateTime fromUtc,
             DateTime toUtc,
+            int skip,
+            int take,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<PlayerPriceSnapshot>>(Array.Empty<PlayerPriceSnapshot>());
+            Task.FromResult<(IReadOnlyList<PlayerPriceSnapshot> Items, int TotalCount)>((Array.Empty<PlayerPriceSnapshot>(), 0));
     }
 
     private sealed class StubListingRepo : IMarketListingSnapshotRepository
@@ -196,12 +206,21 @@ public sealed class OpportunityRecomputeServiceTests
         public Task<MarketListingSnapshot?> GetByListingIdAsync(string listingId, CancellationToken cancellationToken) =>
             Task.FromResult<MarketListingSnapshot?>(null);
 
-        public Task<IReadOnlyList<MarketListingSnapshot>> GetFutbinListingsByPlayerAsync(
+    public Task<IReadOnlyList<MarketListingSnapshot>> GetFutbinListingsByPlayerAsync(
+        long playerId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<MarketListingSnapshot>>(Array.Empty<MarketListingSnapshot>());
+
+        public Task<(IReadOnlyList<MarketListingSnapshot> Items, int TotalCount)> GetByPlayerPagedAsync(
             long playerId,
             DateTime fromUtc,
             DateTime toUtc,
+            int skip,
+            int take,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<MarketListingSnapshot>>(Array.Empty<MarketListingSnapshot>());
+            Task.FromResult<(IReadOnlyList<MarketListingSnapshot> Items, int TotalCount)>((Array.Empty<MarketListingSnapshot>(), 0));
     }
 
     private sealed class StubSbcRepo : ISbcChallengeRepository
@@ -218,6 +237,13 @@ public sealed class OpportunityRecomputeServiceTests
             SbcChallengeQuery query,
             CancellationToken cancellationToken) =>
             Task.FromResult(Challenges);
+
+        public Task<(IReadOnlyList<SbcChallenge> Items, int TotalCount)> QueryActivePagedAsync(
+            SbcActiveListQuery query,
+            int skip,
+            int take,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<(IReadOnlyList<SbcChallenge> Items, int TotalCount)>((Challenges, Challenges.Count));
     }
 
     private sealed class StubTradeScoring : ITradeScoringService
@@ -255,5 +281,18 @@ public sealed class OpportunityRecomputeServiceTests
 
         public Task<bool> ExistsForPlayerAsync(long playerId, CancellationToken cancellationToken) =>
             Task.FromResult(false);
+
+        public Task<(IReadOnlyList<TradeOpportunityStoredView> Items, int TotalCount)> QueryPagedAsync(
+            TradeOpportunityListFilter filter,
+            int skip,
+            int take,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<(IReadOnlyList<TradeOpportunityStoredView> Items, int TotalCount)>(
+                (Array.Empty<TradeOpportunityStoredView>(), 0));
+
+        public Task<TradeOpportunityStoredView?> GetByOpportunityIdAsync(
+            Guid opportunityId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<TradeOpportunityStoredView?>(null);
     }
 }

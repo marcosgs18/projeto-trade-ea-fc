@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using TradingIntel.Worker.Health;
+using TradingIntel.Application.JobHealth;
 
 namespace TradingIntel.Worker.Jobs;
 

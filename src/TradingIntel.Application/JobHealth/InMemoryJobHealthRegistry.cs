@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace TradingIntel.Worker.Health;
+namespace TradingIntel.Application.JobHealth;
 
 /// <summary>
 /// Default in-memory implementation. Uses a <see cref="ConcurrentDictionary{TKey, TValue}"/>

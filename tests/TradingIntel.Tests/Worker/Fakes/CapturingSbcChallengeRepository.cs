@@ -59,4 +59,45 @@ internal sealed class CapturingSbcChallengeRepository : ISbcChallengeRepository
 
         return Task.FromResult<IReadOnlyList<SbcChallenge>>(results.ToList());
     }
+
+    public Task<(IReadOnlyList<SbcChallenge> Items, int TotalCount)> QueryActivePagedAsync(
+        SbcActiveListQuery query,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        IEnumerable<SbcChallenge> results = _state.Values;
+
+        if (!query.IncludeExpired)
+        {
+            results = results.Where(c => c.ExpiresAtUtc is null || c.ExpiresAtUtc > query.ActiveAsOfUtc);
+        }
+
+        if (query.ExpiresBeforeUtc is { } expiresBefore)
+        {
+            results = results.Where(c => c.ExpiresAtUtc is not null && c.ExpiresAtUtc <= expiresBefore);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.CategoryContains))
+        {
+            results = results.Where(c =>
+                c.Category.Contains(query.CategoryContains, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (query.RequiresOverall is { } overall)
+        {
+            var keys = new HashSet<string>(SbcChallengeQuery.TeamRatingRequirementKeys, StringComparer.OrdinalIgnoreCase);
+            results = results.Where(c => c.Requirements.Any(r => keys.Contains(r.Key) && r.Minimum <= overall));
+        }
+
+        var ordered = results
+            .OrderBy(c => c.ExpiresAtUtc is null ? 1 : 0)
+            .ThenBy(c => c.ExpiresAtUtc)
+            .ThenBy(c => c.Title)
+            .ToList();
+
+        var total = ordered.Count;
+        var slice = ordered.Skip(skip).Take(take).ToList();
+        return Task.FromResult<(IReadOnlyList<SbcChallenge> Items, int TotalCount)>((slice, total));
+    }
 }

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TradingIntel.Application.Trading;
 using TradingIntel.Tests.Worker.Fakes;
-using TradingIntel.Worker.Health;
+using TradingIntel.Application.JobHealth;
 using TradingIntel.Worker.Jobs;
 using Xunit;
 

@@ -1,9 +1,21 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi.Models;
+using TradingIntel.Api;
 using TradingIntel.Application;
 using TradingIntel.Application.Trading;
 using TradingIntel.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddProblemDetails();
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+});
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -13,52 +25,30 @@ builder.Services.Configure<OpportunityRecomputePlayersSource>(
     builder.Configuration.GetSection("Jobs:OpportunityRecompute"));
 builder.Services.AddHealthChecks();
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "TradingIntel API",
+        Version = "v1",
+    });
+});
+
 var app = builder.Build();
+
+app.UseExceptionHandler();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.MapHealthChecks("/health");
 app.MapGet("/", () => Results.Text("TradingIntel.Api", "text/plain"));
 
-app.MapPost(
-        "/api/opportunities/recompute",
-        async (
-            OpportunityRecomputeHttpRequest? body,
-            IOpportunityRecomputeService recompute,
-            IOptionsSnapshot<OpportunityRecomputePlayersSource> playersConfig,
-            CancellationToken cancellationToken) =>
-        {
-            var rows = playersConfig.Value.Players ?? Array.Empty<OpportunityRecomputeWatchlistRow>();
-            if (rows.Count == 0)
-            {
-                return Results.BadRequest(new
-                {
-                    error = "No players configured under Jobs:OpportunityRecompute:Players.",
-                });
-            }
-
-            IEnumerable<OpportunityRecomputeWatchlistRow> chosen =
-                body?.PlayerIds is { Length: > 0 } ids
-                    ? rows.Where(r => ids.Contains(r.PlayerId))
-                    : rows;
-
-            var batch = chosen
-                .Select(r =>
-                {
-                    var name = string.IsNullOrWhiteSpace(r.Name)
-                        ? $"player-{r.PlayerId}"
-                        : r.Name.Trim();
-                    return new OpportunityRecomputePlayer(r.PlayerId, name, r.Overall);
-                })
-                .ToList();
-
-            if (batch.Count == 0)
-            {
-                return Results.BadRequest(new { error = "No matching players for the given filter." });
-            }
-
-            var summary = await recompute.RecomputeAsync(batch, cancellationToken).ConfigureAwait(false);
-            return Results.Ok(summary);
-        })
-    .WithName("OpportunityRecompute");
+TradingIntelApiEndpoints.Map(app);
 
 app.Run();
 

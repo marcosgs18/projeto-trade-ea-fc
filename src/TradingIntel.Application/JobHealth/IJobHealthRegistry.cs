@@ -1,4 +1,4 @@
-namespace TradingIntel.Worker.Health;
+namespace TradingIntel.Application.JobHealth;
 
 /// <summary>
 /// Singleton, thread-safe registry that records the outcome of each scheduled

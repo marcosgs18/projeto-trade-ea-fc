@@ -22,4 +22,12 @@ public interface IMarketListingSnapshotRepository
         DateTime fromUtc,
         DateTime toUtc,
         CancellationToken cancellationToken);
+
+    Task<(IReadOnlyList<MarketListingSnapshot> Items, int TotalCount)> GetByPlayerPagedAsync(
+        long playerId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
 }

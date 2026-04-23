@@ -1,5 +1,5 @@
 using FluentAssertions;
-using TradingIntel.Worker.Health;
+using TradingIntel.Application.JobHealth;
 using Xunit;
 
 namespace TradingIntel.Tests.Worker;
