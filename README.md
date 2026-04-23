@@ -61,3 +61,4 @@ Com a Api em execução, o endpoint de saúde responde em `/health` (HTTP 200).
 
 - EditorConfig na raiz (C#, JSON, Markdown).
 - Toda alteração relevante deve incluir atualização mínima em `docs/` (ver `.cursor/rules/project-rule.md`).
+- Contribuição, branches e checklist de PR: [`CONTRIBUTING.md`](CONTRIBUTING.md). Fluxo para agentes: [`docs/development-workflow.md`](docs/development-workflow.md).
