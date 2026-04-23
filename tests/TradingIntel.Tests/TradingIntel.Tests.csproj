@@ -20,4 +20,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\fixtures\futgg\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

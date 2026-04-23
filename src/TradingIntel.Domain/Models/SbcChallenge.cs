@@ -1,10 +1,19 @@
 using TradingIntel.Domain.Common;
+using TradingIntel.Domain.ValueObjects;
 
 namespace TradingIntel.Domain.Models;
 
 public sealed record SbcChallenge
 {
-    public SbcChallenge(Guid id, string title, string setName, DateTime observedAtUtc, IEnumerable<SbcRequirement> requirements)
+    public SbcChallenge(
+        Guid id,
+        string title,
+        string category,
+        DateTime? expiresAtUtc,
+        SbcRepeatability repeatability,
+        string setName,
+        DateTime observedAtUtc,
+        IEnumerable<SbcRequirement> requirements)
     {
         if (id == Guid.Empty)
         {
@@ -13,6 +22,9 @@ public sealed record SbcChallenge
 
         Id = id;
         Title = Guard.NotNullOrWhiteSpace(title, nameof(title));
+        Category = Guard.NotNullOrWhiteSpace(category, nameof(category));
+        ExpiresAtUtc = expiresAtUtc is null ? null : Guard.Utc(expiresAtUtc.Value, nameof(expiresAtUtc));
+        Repeatability = repeatability ?? throw new ArgumentNullException(nameof(repeatability));
         SetName = Guard.NotNullOrWhiteSpace(setName, nameof(setName));
         ObservedAtUtc = Guard.Utc(observedAtUtc, nameof(observedAtUtc));
 
@@ -28,6 +40,12 @@ public sealed record SbcChallenge
     public Guid Id { get; }
 
     public string Title { get; }
+
+    public string Category { get; }
+
+    public DateTime? ExpiresAtUtc { get; }
+
+    public SbcRepeatability Repeatability { get; }
 
     public string SetName { get; }
 

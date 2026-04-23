@@ -13,8 +13,11 @@ public sealed class DomainInvariantsTests
         var act = () => new SbcChallenge(
             Guid.NewGuid(),
             "84+ Upgrade",
-            "Daily",
-            DateTime.UtcNow,
+            "upgrades",
+            expiresAtUtc: null,
+            repeatability: SbcRepeatability.Unknown(),
+            setName: "Daily",
+            observedAtUtc: DateTime.UtcNow,
             Array.Empty<SbcRequirement>());
 
         act.Should().Throw<ArgumentException>().WithMessage("*At least one SBC requirement*");
