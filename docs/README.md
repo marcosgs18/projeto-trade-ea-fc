@@ -6,10 +6,10 @@
 - [Contribuindo (branches, PR, checklist)](../CONTRIBUTING.md).
 - [Modelo de domínio](domain-model.md) — entidades, value objects e invariantes.
 - [Fonte: FUTBIN](source-futbin.md) — superfícies públicas, shape de payload, normalização e cobertura de testes.
+- [Persistência](persistence.md) — SQLite, schema, repositórios, migrations e consulta temporal.
 
 ## Integração contínua
 
 O repositório usa GitHub Actions (workflow `CI`): em cada push ou pull request para `main`, roda `dotnet restore`, `dotnet build` e `dotnet test` em **Release** no Ubuntu com SDK .NET 9.
 
 Atualize estes arquivos quando mudar fluxos, integrações externas ou contratos públicos.
-

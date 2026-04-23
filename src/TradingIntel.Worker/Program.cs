@@ -3,10 +3,10 @@ using TradingIntel.Infrastructure;
 using TradingIntel.Worker;
 
 Host.CreateDefaultBuilder(args)
-    .ConfigureServices((_, services) =>
+    .ConfigureServices((context, services) =>
     {
         services.AddApplication();
-        services.AddInfrastructure();
+        services.AddInfrastructure(context.Configuration);
         services.AddHostedService<Worker>();
     })
     .Build()
