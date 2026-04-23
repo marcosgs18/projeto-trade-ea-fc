@@ -7,7 +7,7 @@ Host.CreateDefaultBuilder(args)
     {
         services.AddApplication();
         services.AddInfrastructure(context.Configuration);
-        services.AddHostedService<Worker>();
+        services.AddCollectionJobs(context.Configuration);
     })
     .Build()
     .Run();

@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\src\TradingIntel.Application\TradingIntel.Application.csproj" />
     <ProjectReference Include="..\..\src\TradingIntel.Infrastructure\TradingIntel.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\TradingIntel.Api\TradingIntel.Api.csproj" />
+    <ProjectReference Include="..\..\src\TradingIntel.Worker\TradingIntel.Worker.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FluentAssertions" Version="7.0.0" />
