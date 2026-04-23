@@ -29,3 +29,11 @@ Uma task só está pronta quando:
 3. explicabilidade do score
 4. observabilidade
 5. UI operacional
+
+## Entrega da task
+Ao concluir uma feature/task (compilando, com testes e docs atualizadas), o agente deve **sempre perguntar ao operador**, antes de encerrar a execução:
+
+1. Se deve criar uma **branch dedicada** (`feature/<slug>` por padrão) a partir de `main`.
+2. Se deve abrir um **Pull Request** para `main` via `gh pr create`, usando o template `## Summary` + `## Test plan`.
+
+O agente nunca deve criar branch/commit/PR sem confirmação explícita, exceto se o operador pedir na mensagem inicial. Quando o operador confirmar, seguir o fluxo de `CONTRIBUTING.md` (branch name, mensagem de commit em Conventional Commits, PR com checklist de critérios de aceite).
