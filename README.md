@@ -2,6 +2,8 @@
 
 Solution inicial em .NET 9 para uma plataforma de trading intelligence (EA FC 26), organizada em camadas com hosts separados para API, worker e painel.
 
+[![CI](https://github.com/marcosgs18/projeto-trade-ea-fc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/marcosgs18/projeto-trade-ea-fc/actions/workflows/ci.yml)
+
 ## Arquitetura
 
 O fluxo de dependências segue a regra do repositório: **Domain → Application → Infrastructure → Api / Worker / Dashboard**.
