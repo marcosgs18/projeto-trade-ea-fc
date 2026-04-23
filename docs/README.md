@@ -8,6 +8,7 @@
 - [Fonte: FUTBIN](source-futbin.md) — superfícies públicas, shape de payload, normalização e cobertura de testes.
 - [Persistência](persistence.md) — SQLite, schema, repositórios, migrations e consulta temporal.
 - [Demanda por faixa de rating](rating-demand.md) — serviço que transforma SBCs ativos em score explicável por faixa de overall.
+- [Trade Scoring V1](trade-scoring-v1.md) — fórmula linear e explicável que combina demanda, spread líquido, liquidez, estabilidade e urgência em uma `TradeOpportunity`.
 
 ## Integração contínua
 

@@ -80,6 +80,38 @@ public sealed class DomainInvariantsTests
     }
 
     [Fact]
+    public void TradeOpportunity_computes_net_margin_after_EA_tax()
+    {
+        // buy=1000, sell=1500 → floor(1500 * 0.95) - 1000 = 1425 - 1000 = 425
+        var opportunity = CreateValidOpportunity();
+
+        opportunity.ExpectedNetMargin.Value.Should().Be(425);
+    }
+
+    [Fact]
+    public void TradeOpportunity_net_margin_clamps_to_zero_when_tax_erases_edge()
+    {
+        var player = new PlayerReference(123, "Thin Edge");
+        var reason = new OpportunityReason("THIN", "Edge abaixo da taxa", 0.1m);
+        var suggestion = new ExecutionSuggestion(
+            Guid.NewGuid(), Guid.NewGuid(), ExecutionAction.Buy,
+            new Coins(1000), DateTime.UtcNow.AddMinutes(5));
+
+        // sell=1010, buy=1000 → gross 10 lucro; net = floor(1010*0.95)=959 - 1000 = -41 → clamp 0
+        var opp = new TradeOpportunity(
+            Guid.NewGuid(),
+            player,
+            DateTime.UtcNow,
+            new Coins(1000),
+            new Coins(1010),
+            new ConfidenceScore(0.3m),
+            new[] { reason },
+            new[] { suggestion });
+
+        opp.ExpectedNetMargin.Value.Should().Be(0);
+    }
+
+    [Fact]
     public void TradeOpportunity_requires_reasons()
     {
         var player = new PlayerReference(99, "No Reason Player");
