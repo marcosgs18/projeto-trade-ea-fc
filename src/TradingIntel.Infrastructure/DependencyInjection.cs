@@ -1,18 +1,32 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TradingIntel.Application.FutGg;
 using TradingIntel.Application.Futbin;
+using TradingIntel.Application.Persistence;
 using TradingIntel.Application.Snapshots;
 using TradingIntel.Infrastructure.FutGg;
 using TradingIntel.Infrastructure.Futbin;
-using TradingIntel.Infrastructure.Snapshots;
+using TradingIntel.Infrastructure.Persistence;
+using TradingIntel.Infrastructure.Persistence.Repositories;
 
 namespace TradingIntel.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services)
+    private const string DefaultConnectionString = "Data Source=tradingintel.db";
+
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration? configuration = null)
     {
-        services.AddSingleton<IRawSnapshotStore>(sp => new FileRawSnapshotStore(AppContext.BaseDirectory));
+        var connectionString = configuration?.GetConnectionString("TradingIntel") ?? DefaultConnectionString;
+
+        services.AddDbContext<TradingIntelDbContext>(options => options.UseSqlite(connectionString));
+
+        services.AddScoped<SqliteRawSnapshotStore>();
+        services.AddScoped<IRawSnapshotStore>(sp => sp.GetRequiredService<SqliteRawSnapshotStore>());
+        services.AddScoped<IRawSnapshotRepository>(sp => sp.GetRequiredService<SqliteRawSnapshotStore>());
+        services.AddScoped<IPlayerPriceSnapshotRepository, PlayerPriceSnapshotRepository>();
+        services.AddScoped<IMarketListingSnapshotRepository, MarketListingSnapshotRepository>();
 
         services.AddHttpClient<IFutGgSbcClient, FutGgSbcClient>(client =>
         {
