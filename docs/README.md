@@ -7,6 +7,7 @@
 - [Modelo de domínio](domain-model.md) — entidades, value objects e invariantes.
 - [Fonte: FUTBIN](source-futbin.md) — superfícies públicas, shape de payload, normalização e cobertura de testes.
 - [Persistência](persistence.md) — SQLite, schema, repositórios, migrations e consulta temporal.
+- [Demanda por faixa de rating](rating-demand.md) — serviço que transforma SBCs ativos em score explicável por faixa de overall.
 
 ## Integração contínua
 
