@@ -17,6 +17,7 @@ Todos em `src/TradingIntel.Application/Persistence/`:
 - `IPlayerPriceSnapshotRepository` — grava em lote e consulta por `playerId` + janela temporal, além de "último por player+source".
 - `IMarketListingSnapshotRepository` — grava em lote, consulta por `playerId` + janela, e lookup por `ListingId`.
 - `ISbcChallengeRepository` — **upsert por `Id`** (GUID do FUT.GG) e consulta composável (`SbcChallengeQuery`): `ActiveAsOfUtc` (SBCs ativos no instante), `CategoryContains` (substring, case-insensitive) e `MatchesOverall` (SBCs que um overall ajuda a cumprir — filtra por keys `min_team_rating` / `squad_rating`).
+- `ITradeOpportunityRepository` — última `TradeOpportunity` por jogador (upsert por `PlayerId`), remoção quando não há edge, marcação de obsolescência por TTL de recomputação.
 - `StoredRawSnapshot` — record retornado pelas consultas, preservando `SourceSnapshotMetadata` + payload.
 
 Os repositórios recebem e retornam **modelos de domínio** (`PlayerPriceSnapshot`, `MarketListingSnapshot`) — não expõem tipos de infraestrutura.
@@ -114,6 +115,25 @@ Tabela filha normalizada (uma linha por requirement). Permite filtrar SBCs por c
 
 A cada tick do `SbcCollectionJob`, os requirements do challenge são **substituídos integralmente** (delete cascateado + reinsert) para refletir fielmente a forma atual do SBC.
 
+### `trade_opportunities`
+
+Última oportunidade de trade conhecida por jogador (uma linha por `PlayerId`). `Reasons` e `Suggestions` são JSON (domínio serializado). O job `OpportunityRecomputeJob` e o endpoint `POST /api/opportunities/recompute` alimentam esta tabela via `IOpportunityRecomputeService`.
+
+| Coluna | Tipo | Notas |
+| --- | --- | --- |
+| `PlayerId` | `INTEGER` | PK |
+| `OpportunityId` | `TEXT` (GUID) | id da `TradeOpportunity` no domínio |
+| `PlayerDisplayName` | `TEXT(256)` | |
+| `DetectedAtUtc` | `TEXT` (UTC) | |
+| `ExpectedBuyPrice` / `ExpectedSellPrice` | `TEXT` (decimal) | |
+| `Confidence` | `TEXT` (decimal) | score `[0, 1]` |
+| `ReasonsJson` | `TEXT` | array de `OpportunityReason` |
+| `SuggestionsJson` | `TEXT` | array de `ExecutionSuggestion` |
+| `LastRecomputedAtUtc` | `TEXT` (UTC) | último tick que atualizou a linha |
+| `IsStale` | `INTEGER` (0/1) | `true` quando `LastRecomputedAtUtc` fica mais antigo que `StaleAfter` configurado |
+
+Índices: `ix_trade_opportunities_last_recomputed`, `ix_trade_opportunities_is_stale`.
+
 ## Consulta temporal
 
 Todos os repositórios oferecem uma janela `[fromUtc, toUtc]` inclusiva para histórico:
@@ -129,6 +149,7 @@ E um atalho para o estado mais recente:
 ```csharp
 await rawSnapshotRepository.GetLatestAsync("futbin", cancellationToken);
 await playerPriceRepository.GetLatestForPlayerAsync(playerId, "futbin:ps", cancellationToken);
+await playerPriceRepository.GetLatestFutbinPriceForPlayerAsync(playerId, cancellationToken);
 ```
 
 Os resultados vêm ordenados por `CapturedAtUtc` (crescente em janelas, decrescente em "latest"). As colunas são indexadas por `(PlayerId, CapturedAtUtc)` / `(Source, CapturedAtUtc)`, o que mantém queries eficientes mesmo com milhões de snapshots.
@@ -176,6 +197,7 @@ Cobertura atual:
 - Idempotência de `AddRangeAsync` vazio.
 - `UTC kind` preservado no round-trip.
 - SBCs: upsert insere, upsert é idempotente por `Id` e substitui requirements; `QueryAsync` filtra por `ActiveAsOfUtc`, `CategoryContains` e `MatchesOverall`; `UpsertRangeAsync` vazio é no-op.
+- Oportunidades: `ITradeOpportunityRepository` upsert/delete/`MarkStaleWhereLastRecomputedBeforeAsync`; integração cobre remoção após recompute sem edge.
 
 ## Troca de provider
 

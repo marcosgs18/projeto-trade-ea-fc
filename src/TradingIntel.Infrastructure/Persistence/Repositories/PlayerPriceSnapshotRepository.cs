@@ -56,6 +56,38 @@ public sealed class PlayerPriceSnapshotRepository : IPlayerPriceSnapshotReposito
         return record is null ? null : ToDomain(record);
     }
 
+    public async Task<PlayerPriceSnapshot?> GetLatestFutbinPriceForPlayerAsync(
+        long playerId,
+        CancellationToken cancellationToken)
+    {
+        var record = await _dbContext.PlayerPriceSnapshots
+            .AsNoTracking()
+            .Where(r => r.PlayerId == playerId && r.Source.StartsWith("futbin:"))
+            .OrderByDescending(r => r.CapturedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return record is null ? null : ToDomain(record);
+    }
+
+    public async Task<IReadOnlyList<PlayerPriceSnapshot>> GetFutbinPriceHistoryAsync(
+        long playerId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken)
+    {
+        var records = await _dbContext.PlayerPriceSnapshots
+            .AsNoTracking()
+            .Where(r =>
+                r.PlayerId == playerId
+                && r.Source.StartsWith("futbin:")
+                && r.CapturedAtUtc >= fromUtc
+                && r.CapturedAtUtc <= toUtc)
+            .OrderBy(r => r.CapturedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        return records.Select(ToDomain).ToList();
+    }
+
     private static PlayerPriceSnapshotRecord Map(PlayerPriceSnapshot snapshot) => new()
     {
         Id = Guid.NewGuid(),

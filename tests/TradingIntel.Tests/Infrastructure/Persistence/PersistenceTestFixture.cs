@@ -27,6 +27,8 @@ public sealed class PersistenceTestFixture : IDisposable
         ctx.Database.Migrate();
     }
 
+    public DbContextOptions<TradingIntelDbContext> DbContextOptions => _options;
+
     public TradingIntelDbContext CreateContext() => new(_options);
 
     public void Dispose()

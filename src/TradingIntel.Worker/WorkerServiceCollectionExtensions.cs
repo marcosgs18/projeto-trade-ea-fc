@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using TradingIntel.Application.Trading;
 using TradingIntel.Worker.Health;
 using TradingIntel.Worker.Jobs;
 
@@ -25,8 +26,16 @@ public static class WorkerServiceCollectionExtensions
             .AddOptions<PriceCollectionOptions>()
             .Bind(configuration.GetSection("Jobs:PriceCollection"));
 
+        services.Configure<OpportunityRecomputeStaleSettings>(
+            configuration.GetSection("Jobs:OpportunityRecompute"));
+
+        services
+            .AddOptions<OpportunityRecomputeOptions>()
+            .Bind(configuration.GetSection("Jobs:OpportunityRecompute"));
+
         services.AddHostedService<SbcCollectionJob>();
         services.AddHostedService<PriceCollectionJob>();
+        services.AddHostedService<OpportunityRecomputeJob>();
 
         return services;
     }

@@ -14,6 +14,8 @@ public static class DependencyInjection
         services.AddSingleton(TradeScoringWeights.Default);
         services.AddScoped<ITradeScoringService, TradeScoringService>();
 
+        services.AddScoped<IOpportunityRecomputeService, OpportunityRecomputeService>();
+
         return services;
     }
 }

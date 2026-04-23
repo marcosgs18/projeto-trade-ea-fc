@@ -18,6 +18,32 @@ internal sealed class CapturingPlayerPriceSnapshotRepository : IPlayerPriceSnaps
 
     public Task<PlayerPriceSnapshot?> GetLatestForPlayerAsync(long playerId, string source, CancellationToken cancellationToken)
         => Task.FromResult<PlayerPriceSnapshot?>(null);
+
+    public Task<PlayerPriceSnapshot?> GetLatestFutbinPriceForPlayerAsync(long playerId, CancellationToken cancellationToken)
+    {
+        var latest = Saved
+            .Where(s => s.Player.PlayerId == playerId && s.Source.StartsWith("futbin:", StringComparison.Ordinal))
+            .OrderByDescending(s => s.CapturedAtUtc)
+            .FirstOrDefault();
+        return Task.FromResult<PlayerPriceSnapshot?>(latest);
+    }
+
+    public Task<IReadOnlyList<PlayerPriceSnapshot>> GetFutbinPriceHistoryAsync(
+        long playerId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken)
+    {
+        var list = Saved
+            .Where(s =>
+                s.Player.PlayerId == playerId
+                && s.Source.StartsWith("futbin:", StringComparison.Ordinal)
+                && s.CapturedAtUtc >= fromUtc
+                && s.CapturedAtUtc <= toUtc)
+            .OrderBy(s => s.CapturedAtUtc)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<PlayerPriceSnapshot>>(list);
+    }
 }
 
 internal sealed class CapturingMarketListingSnapshotRepository : IMarketListingSnapshotRepository
@@ -35,4 +61,21 @@ internal sealed class CapturingMarketListingSnapshotRepository : IMarketListingS
 
     public Task<MarketListingSnapshot?> GetByListingIdAsync(string listingId, CancellationToken cancellationToken)
         => Task.FromResult<MarketListingSnapshot?>(null);
+
+    public Task<IReadOnlyList<MarketListingSnapshot>> GetFutbinListingsByPlayerAsync(
+        long playerId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken)
+    {
+        var list = Saved
+            .Where(s =>
+                s.Player.PlayerId == playerId
+                && s.Source.StartsWith("futbin:", StringComparison.Ordinal)
+                && s.CapturedAtUtc >= fromUtc
+                && s.CapturedAtUtc <= toUtc)
+            .OrderBy(s => s.CapturedAtUtc)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<MarketListingSnapshot>>(list);
+    }
 }

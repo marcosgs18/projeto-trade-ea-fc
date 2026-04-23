@@ -13,4 +13,13 @@ public interface IMarketListingSnapshotRepository
         CancellationToken cancellationToken);
 
     Task<MarketListingSnapshot?> GetByListingIdAsync(string listingId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Listagens Futbin (<c>futbin:*</c>) na janela temporal.
+    /// </summary>
+    Task<IReadOnlyList<MarketListingSnapshot>> GetFutbinListingsByPlayerAsync(
+        long playerId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken);
 }

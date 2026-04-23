@@ -6,8 +6,9 @@ Host genérico (`Microsoft.Extensions.Hosting`) que agenda e executa jobs de col
 
 | Job | Nome interno | Fonte | Persistência |
 | --- | --- | --- | --- |
-| SBC collection | `sbc-collection` | `IFutGgSbcClient` | Raw (feito pelo próprio client via `IRawSnapshotStore`); normalizado ainda não tem repositório (V1) — apenas logado. |
-| Price collection | `price-collection` | `IFutbinMarketClient` | Raw (feito pelo client) + normalizado via `IPlayerPriceSnapshotRepository` e `IMarketListingSnapshotRepository`. |
+| SBC collection | `sbc-collection` | `IFutGgSbcClient` | Raw (client via `IRawSnapshotStore`) + normalizado `ISbcChallengeRepository`. |
+| Price collection | `price-collection` | `IFutbinMarketClient` | Raw (client) + `IPlayerPriceSnapshotRepository` / `IMarketListingSnapshotRepository`. |
+| Opportunity recompute | `opportunity-recompute` | `IOpportunityRecomputeService` (preços Futbin, SBCs, demanda, `ITradeScoringService`) | `ITradeOpportunityRepository` + marcação `IsStale` por `StaleAfter`. |
 
 > **Invariante "raw antes de normalizado"**: os clients `FutGgSbcClient` e `FutbinMarketClient` gravam o payload bruto via `IRawSnapshotStore` **antes** de retornar os objetos parseados. Logo, quando o Worker recebe o snapshot para persistir o normalizado, o raw já está salvo. O Worker não precisa (e não deve) gravar o raw novamente.
 
@@ -25,7 +26,9 @@ TradingIntel.Worker
 │   ├── TickResult.cs                  # resultado classificado (Success / Failure / Cancelled)
 │   ├── SbcCollectionJob.cs            # job 1
 │   ├── PriceCollectionJob.cs          # job 2
-│   └── PriceCollectionOptions.cs      # watchlist estática para o job de preço
+│   ├── OpportunityRecomputeJob.cs     # job 3 — score + persistência
+│   ├── PriceCollectionOptions.cs      # watchlist estática para o job de preço
+│   └── OpportunityRecomputeOptions.cs # watchlist + StaleAfter + agendamento
 ├── WorkerServiceCollectionExtensions.cs  # AddCollectionJobs(IConfiguration)
 └── Program.cs                         # Host genérico
 ```
@@ -75,6 +78,18 @@ Cada job lê sua seção em `appsettings.json` (bind via `IOptions<TOptions>`).
       "BackoffMultiplier": 2.0,
       "Players": [
         { "PlayerId": 12345, "Name": "Example Player" }
+      ]
+    },
+    "OpportunityRecompute": {
+      "Enabled": true,
+      "InitialDelay": "00:00:15",
+      "Interval": "00:05:00",
+      "InitialBackoff": "00:00:30",
+      "MaxBackoff": "00:30:00",
+      "BackoffMultiplier": 2.0,
+      "StaleAfter": "00:15:00",
+      "Players": [
+        { "PlayerId": 12345, "Name": "Example Player", "Overall": 84 }
       ]
     }
   }

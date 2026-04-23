@@ -10,7 +10,7 @@
 - [ADR-002 — Persistência de SBCs (upsert + requirements normalizados)](architecture-decision-records/adr-002-sbc-persistence-strategy.md) — por que o normalizado é upsert-por-`Id` e como `MatchesOverall` é definido.
 - [Demanda por faixa de rating](rating-demand.md) — serviço que transforma SBCs ativos em score explicável por faixa de overall.
 - [Trade Scoring V1](trade-scoring-v1.md) — fórmula linear e explicável que combina demanda, spread líquido, liquidez, estabilidade e urgência em uma `TradeOpportunity`.
-- [Worker de coleta](worker.md) — jobs periódicos (SBCs e preços), agendamento, backoff, health interno e configuração.
+- [Worker de coleta](worker.md) — jobs periódicos (SBCs, preços e recompute de oportunidades), agendamento, backoff, health interno e configuração.
 
 ## Integração contínua
 

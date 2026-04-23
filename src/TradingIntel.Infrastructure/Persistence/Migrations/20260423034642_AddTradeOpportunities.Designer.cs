@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TradingIntel.Infrastructure.Persistence;
 
@@ -10,9 +11,11 @@ using TradingIntel.Infrastructure.Persistence;
 namespace TradingIntel.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TradingIntelDbContext))]
-    partial class TradingIntelDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260423034642_AddTradeOpportunities")]
+    partial class AddTradeOpportunities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.0");
