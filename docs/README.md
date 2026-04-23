@@ -1,6 +1,9 @@
 # Documentação
 
 - [Arquitetura e camadas](architecture.md) — visão inicial alinhada ao código.
+- [Fluxo de desenvolvimento e uso com Cursor Agents](development-workflow.md) — convenções de trabalho, testes e logs.
+- [ADRs](architecture-decision-records/) — decisões arquiteturais.
+- [Contribuindo (branches, PR, checklist)](../CONTRIBUTING.md).
 
 ## Integração contínua
 
