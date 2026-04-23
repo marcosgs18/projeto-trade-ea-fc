@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TradingIntel.Application.FutGg;
+using TradingIntel.Application.Persistence;
 using TradingIntel.Tests.Worker.Fakes;
 using TradingIntel.Worker.Health;
 using TradingIntel.Worker.Jobs;
@@ -157,13 +158,42 @@ public sealed class SbcCollectionJobTests
         snapshot.LastFailureUtc.Should().NotBeNull(); // historical failure kept for diagnostics
     }
 
+    [Fact]
+    public async Task Successful_tick_persists_snapshot_via_repository_and_is_idempotent()
+    {
+        var snapshot = FakeFutGgSbcClient.BuildDefaultSnapshot(challengeCount: 3);
+        var fakeClient = new FakeFutGgSbcClient
+        {
+            Handler = (_) => Task.FromResult(snapshot),
+        };
+        var repo = new CapturingSbcChallengeRepository();
+        var health = new InMemoryJobHealthRegistry();
+        var job = BuildJob(fakeClient, health, new SbcCollectionOptions(), repo);
+
+        var first = await job.RunTickAsync(CancellationToken.None);
+        var second = await job.RunTickAsync(CancellationToken.None);
+
+        first.Status.Should().Be(TickStatus.Success);
+        second.Status.Should().Be(TickStatus.Success);
+
+        repo.UpsertCalls.Should().HaveCount(2);
+        repo.UpsertCalls[0].Should().BeEquivalentTo(snapshot.Challenges);
+        repo.UpsertCalls[1].Should().BeEquivalentTo(snapshot.Challenges);
+        // Upsert is idempotent by Id: two ticks with the same payload leave
+        // the store holding exactly one row per challenge.
+        repo.State.Should().HaveCount(snapshot.Challenges.Count);
+        repo.State.Keys.Should().BeEquivalentTo(snapshot.Challenges.Select(c => c.Id));
+    }
+
     private static SbcCollectionJob BuildJob(
         IFutGgSbcClient client,
         IJobHealthRegistry health,
-        SbcCollectionOptions options)
+        SbcCollectionOptions options,
+        ISbcChallengeRepository? sbcRepository = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(client);
+        services.AddSingleton<ISbcChallengeRepository>(sbcRepository ?? new CapturingSbcChallengeRepository());
         var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
 

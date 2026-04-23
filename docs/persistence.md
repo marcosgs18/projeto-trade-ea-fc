@@ -16,6 +16,7 @@ Todos em `src/TradingIntel.Application/Persistence/`:
 - `IRawSnapshotRepository` — consulta raw snapshots por `source` + janela temporal, e "último por fonte".
 - `IPlayerPriceSnapshotRepository` — grava em lote e consulta por `playerId` + janela temporal, além de "último por player+source".
 - `IMarketListingSnapshotRepository` — grava em lote, consulta por `playerId` + janela, e lookup por `ListingId`.
+- `ISbcChallengeRepository` — **upsert por `Id`** (GUID do FUT.GG) e consulta composável (`SbcChallengeQuery`): `ActiveAsOfUtc` (SBCs ativos no instante), `CategoryContains` (substring, case-insensitive) e `MatchesOverall` (SBCs que um overall ajuda a cumprir — filtra por keys `min_team_rating` / `squad_rating`).
 - `StoredRawSnapshot` — record retornado pelas consultas, preservando `SourceSnapshotMetadata` + payload.
 
 Os repositórios recebem e retornam **modelos de domínio** (`PlayerPriceSnapshot`, `MarketListingSnapshot`) — não expõem tipos de infraestrutura.
@@ -75,6 +76,44 @@ Tabelas criadas pela migration `InitialCreate`:
 - `ix_market_listing_snapshots_player_captured_at` (`PlayerId`, `CapturedAtUtc`)
 - `ix_market_listing_snapshots_listing_id` (`ListingId`)
 
+### `sbc_challenges`
+
+Representa o **estado canônico atual** dos SBCs ativos (upsert por `Id`). O histórico temporal vive nas tabelas `raw_snapshots` (fonte `futgg`), de onde pode ser reconstruído sob demanda.
+
+| Coluna | Tipo | Notas |
+| --- | --- | --- |
+| `Id` | `TEXT` (GUID) | PK — id estável do FUT.GG |
+| `Title` | `TEXT(256)` | |
+| `Category` | `TEXT(128)` | indexado |
+| `ExpiresAtUtc` | `TEXT?` (UTC) | `NULL` = SBC permanente; indexado |
+| `RepeatabilityKind` | `INTEGER` | enum `SbcRepeatabilityKind` |
+| `RepeatabilityMaxCompletions` | `INTEGER?` | `NULL` para Unlimited/Unknown |
+| `SetName` | `TEXT(256)` | |
+| `ObservedAtUtc` | `TEXT` (UTC) | quando o tick do worker observou o SBC |
+
+Índices:
+- `ix_sbc_challenges_expires_at` (`ExpiresAtUtc`) — acelera a consulta "ativos agora".
+- `ix_sbc_challenges_category` (`Category`).
+
+### `sbc_challenge_requirements`
+
+Tabela filha normalizada (uma linha por requirement). Permite filtrar SBCs por chave + limite direto em SQL.
+
+| Coluna | Tipo | Notas |
+| --- | --- | --- |
+| `Id` | `TEXT` (GUID) | PK |
+| `ChallengeId` | `TEXT` (GUID) | FK → `sbc_challenges.Id`, `ON DELETE CASCADE` |
+| `Key` | `TEXT(128)` | ex.: `min_team_rating`, `min_squad_chemistry` |
+| `Minimum` | `INTEGER` | |
+| `Maximum` | `INTEGER?` | opcional (teto) |
+| `Order` | `INTEGER` | preserva a ordem vinda do FUT.GG |
+
+Índices:
+- `ix_sbc_challenge_requirements_challenge_id` (`ChallengeId`)
+- `ix_sbc_challenge_requirements_key_minimum` (`Key`, `Minimum`) — usado pelo filtro `MatchesOverall`.
+
+A cada tick do `SbcCollectionJob`, os requirements do challenge são **substituídos integralmente** (delete cascateado + reinsert) para refletir fielmente a forma atual do SBC.
+
 ## Consulta temporal
 
 Todos os repositórios oferecem uma janela `[fromUtc, toUtc]` inclusiva para histórico:
@@ -94,6 +133,25 @@ await playerPriceRepository.GetLatestForPlayerAsync(playerId, "futbin:ps", cance
 
 Os resultados vêm ordenados por `CapturedAtUtc` (crescente em janelas, decrescente em "latest"). As colunas são indexadas por `(PlayerId, CapturedAtUtc)` / `(Source, CapturedAtUtc)`, o que mantém queries eficientes mesmo com milhões de snapshots.
 
+## Consulta de SBCs
+
+`ISbcChallengeRepository.QueryAsync` aceita um `SbcChallengeQuery` com três filtros opcionais combinados com AND (resultados ordenados por `ExpiresAtUtc` crescente, nulls ao fim, desempate por `Title`):
+
+```csharp
+// SBCs ativos agora que um card overall 85 ajuda a cumprir,
+// filtrando pela categoria "upgrades":
+await sbcRepository.QueryAsync(new SbcChallengeQuery
+{
+    ActiveAsOfUtc = DateTime.UtcNow,
+    CategoryContains = "upgrades",
+    MatchesOverall = 85,
+}, cancellationToken);
+```
+
+- `ActiveAsOfUtc`: retorna apenas challenges com `ExpiresAtUtc IS NULL` **ou** `ExpiresAtUtc > nowUtc` (permanentes contam como ativos).
+- `CategoryContains`: substring case-insensitive via SQL `LIKE`.
+- `MatchesOverall`: SBCs com pelo menos um requirement com chave ∈ `SbcChallengeQuery.TeamRatingRequirementKeys` (`min_team_rating`, `squad_rating`, case-insensitive) e `Minimum <= overall`.
+
 ## Migrations
 
 - **Tool**: `dotnet-ef` 9.0.0 (instalar globalmente: `dotnet tool install --global dotnet-ef --version 9.0.0`).
@@ -112,11 +170,12 @@ Os testes ficam em `tests/TradingIntel.Tests/Infrastructure/Persistence/` e usam
 - A fixture roda `Database.Migrate()` para aplicar a mesma migration do runtime — validando o schema real, não só o model.
 - Cada teste cria um `DbContext` novo pela fixture, simulando o ciclo de vida scoped de produção.
 
-Cobertura atual (9 testes):
+Cobertura atual:
 - Gravação + consulta por janela temporal (raw, price, listing).
 - "Latest" por fonte e por player/source.
 - Idempotência de `AddRangeAsync` vazio.
 - `UTC kind` preservado no round-trip.
+- SBCs: upsert insere, upsert é idempotente por `Id` e substitui requirements; `QueryAsync` filtra por `ActiveAsOfUtc`, `CategoryContains` e `MatchesOverall`; `UpsertRangeAsync` vazio é no-op.
 
 ## Troca de provider
 

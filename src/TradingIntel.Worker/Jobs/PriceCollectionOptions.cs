@@ -15,4 +15,12 @@ public sealed class PlayerWatchlistEntry
     public long PlayerId { get; set; }
 
     public string? Name { get; set; }
+
+    /// <summary>
+    /// Optional overall rating of the player in the roster. Kept as config-only
+    /// metadata in this slice: downstream tasks (rating-band scoring, SBC
+    /// matching) will cross this with <c>ISbcChallengeRepository</c> requirements
+    /// to answer "which active SBCs does this card help fulfill?".
+    /// </summary>
+    public int? Overall { get; set; }
 }

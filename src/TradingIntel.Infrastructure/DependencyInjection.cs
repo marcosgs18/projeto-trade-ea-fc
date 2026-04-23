@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IRawSnapshotRepository>(sp => sp.GetRequiredService<SqliteRawSnapshotStore>());
         services.AddScoped<IPlayerPriceSnapshotRepository, PlayerPriceSnapshotRepository>();
         services.AddScoped<IMarketListingSnapshotRepository, MarketListingSnapshotRepository>();
+        services.AddScoped<ISbcChallengeRepository, SbcChallengeRepository>();
 
         services.AddHttpClient<IFutGgSbcClient, FutGgSbcClient>(client =>
         {

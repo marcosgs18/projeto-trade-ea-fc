@@ -16,6 +16,10 @@ public sealed class TradingIntelDbContext : DbContext
 
     internal DbSet<MarketListingSnapshotRecord> MarketListingSnapshots => Set<MarketListingSnapshotRecord>();
 
+    internal DbSet<SbcChallengeRecord> SbcChallenges => Set<SbcChallengeRecord>();
+
+    internal DbSet<SbcChallengeRequirementRecord> SbcChallengeRequirements => Set<SbcChallengeRequirementRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<RawSnapshotRecord>(entity =>
@@ -54,6 +58,32 @@ public sealed class TradingIntelDbContext : DbContext
             entity.Property(e => e.BuyNowPrice).HasColumnType("TEXT");
             entity.HasIndex(e => new { e.PlayerId, e.CapturedAtUtc }).HasDatabaseName("ix_market_listing_snapshots_player_captured_at");
             entity.HasIndex(e => e.ListingId).HasDatabaseName("ix_market_listing_snapshots_listing_id");
+        });
+
+        modelBuilder.Entity<SbcChallengeRecord>(entity =>
+        {
+            entity.ToTable("sbc_challenges");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Category).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.SetName).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.RepeatabilityKind).HasConversion<int>();
+            entity.HasIndex(e => e.ExpiresAtUtc).HasDatabaseName("ix_sbc_challenges_expires_at");
+            entity.HasIndex(e => e.Category).HasDatabaseName("ix_sbc_challenges_category");
+
+            entity.HasMany(e => e.Requirements)
+                .WithOne(r => r.Challenge)
+                .HasForeignKey(r => r.ChallengeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SbcChallengeRequirementRecord>(entity =>
+        {
+            entity.ToTable("sbc_challenge_requirements");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(128);
+            entity.HasIndex(e => e.ChallengeId).HasDatabaseName("ix_sbc_challenge_requirements_challenge_id");
+            entity.HasIndex(e => new { e.Key, e.Minimum }).HasDatabaseName("ix_sbc_challenge_requirements_key_minimum");
         });
     }
 }
