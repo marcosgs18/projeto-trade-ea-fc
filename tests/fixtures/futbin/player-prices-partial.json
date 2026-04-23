@@ -1,0 +1,24 @@
+{
+  "42": {
+    "prices": {
+      "ps": {
+        "LCPrice": "0",
+        "LCPrice2": "0",
+        "LCPrice3": "0",
+        "LCPrice4": "0",
+        "LCPrice5": "0",
+        "MinPrice": "0",
+        "MaxPrice": "0",
+        "PRP": "0",
+        "updated": "Never"
+      },
+      "pc": {
+        "LCPrice": "12,500",
+        "LCPrice2": "12,750",
+        "MinPrice": "10,000",
+        "MaxPrice": "15,000",
+        "updated": "17 hours ago"
+      }
+    }
+  }
+}

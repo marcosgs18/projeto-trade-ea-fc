@@ -1,0 +1,39 @@
+{
+  "1": {
+    "prices": {
+      "ps": {
+        "LCPrice": "1,500,000",
+        "LCPrice2": "1,510,000",
+        "LCPrice3": "1,520,000",
+        "LCPrice4": "1,530,000",
+        "LCPrice5": "1,540,000",
+        "MinPrice": "900,000",
+        "MaxPrice": "2,000,000",
+        "PRP": "85",
+        "updated": "3 minutes ago"
+      },
+      "xbox": {
+        "LCPrice": "1,480,000",
+        "LCPrice2": "1,490,000",
+        "LCPrice3": "1,500,000",
+        "LCPrice4": "1,510,000",
+        "LCPrice5": "1,520,000",
+        "MinPrice": "920,000",
+        "MaxPrice": "1,950,000",
+        "PRP": "83",
+        "updated": "5 minutes ago"
+      },
+      "pc": {
+        "LCPrice": "1,650,000",
+        "LCPrice2": "1,660,000",
+        "LCPrice3": "1,670,000",
+        "LCPrice4": "1,680,000",
+        "LCPrice5": "1,690,000",
+        "MinPrice": "950,000",
+        "MaxPrice": "2,100,000",
+        "PRP": "78",
+        "updated": "2 minutes ago"
+      }
+    }
+  }
+}
