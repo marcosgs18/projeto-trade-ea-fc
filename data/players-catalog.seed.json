@@ -1,0 +1,15 @@
+{
+  "//": "Watchlist seed populated on host startup via WatchlistSeedService. Each entry is upserted as TrackedPlayer with WatchlistSource = Seed. PlayerId is the FUT.GG eaId (see docs/source-futgg-market.md and docs/watchlist.md). Operators can extend this file or use POST /api/watchlist instead of editing the file. Path is configurable via Watchlist:CatalogSeedPath (default: data/players-catalog.seed.json relative to the host content root).",
+  "version": 1,
+  "players": [
+    { "playerId": 247394, "displayName": "Dejan Kulusevski",  "overall": 83 },
+    { "playerId": 192629, "displayName": "Iago Aspas",        "overall": 83 },
+    { "playerId": 215590, "displayName": "Ayoze Pérez",       "overall": 83 },
+    { "playerId": 230899, "displayName": "Ademola Lookman",   "overall": 84 },
+    { "playerId": 227796, "displayName": "Christian Pulisic", "overall": 84 },
+    { "playerId": 198176, "displayName": "Stefan de Vrij",    "overall": 84 },
+    { "playerId": 272834, "displayName": "João Neves",        "overall": 85 },
+    { "playerId": 226271, "displayName": "Fabián Ruiz",       "overall": 85 },
+    { "playerId": 243812, "displayName": "Rodrygo",           "overall": 85 }
+  ]
+}

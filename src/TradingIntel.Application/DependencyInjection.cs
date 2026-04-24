@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TradingIntel.Application.JobHealth;
 using TradingIntel.Application.Sbc;
 using TradingIntel.Application.Trading;
+using TradingIntel.Application.Watchlist;
 
 namespace TradingIntel.Application;
 
@@ -18,6 +19,9 @@ public static class DependencyInjection
         services.AddScoped<ITradeScoringService, TradeScoringService>();
 
         services.AddScoped<IOpportunityRecomputeService, OpportunityRecomputeService>();
+
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<IWatchlistSeedService, WatchlistSeedService>();
 
         return services;
     }

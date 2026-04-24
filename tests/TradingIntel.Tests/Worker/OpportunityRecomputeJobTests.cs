@@ -2,7 +2,10 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TradingIntel.Application.Persistence;
 using TradingIntel.Application.Trading;
+using TradingIntel.Domain.Models;
+using TradingIntel.Domain.ValueObjects;
 using TradingIntel.Tests.Worker.Fakes;
 using TradingIntel.Application.JobHealth;
 using TradingIntel.Worker.Jobs;
@@ -12,32 +15,25 @@ namespace TradingIntel.Tests.Worker;
 
 public sealed class OpportunityRecomputeJobTests
 {
+    private static TrackedPlayer Player(long id, string name, int? overall) =>
+        new(
+            new PlayerReference(id, name),
+            overall,
+            WatchlistSource.Seed,
+            addedAtUtc: DateTime.UtcNow,
+            lastCollectedAtUtc: null,
+            isActive: true);
+
     [Fact]
     public async Task Successful_tick_invokes_recompute_for_each_watchlist_player()
     {
         var health = new InMemoryJobHealthRegistry();
         var recompute = new RecordingOpportunityRecomputeService();
-        var options = new OpportunityRecomputeOptions
-        {
-            Enabled = true,
-            InitialDelay = TimeSpan.Zero,
-            Interval = TimeSpan.FromHours(1),
-            Players =
-            {
-                new OpportunityRecomputeWatchlistRow { PlayerId = 2001, Name = "A", Overall = 84 },
-                new OpportunityRecomputeWatchlistRow { PlayerId = 2002, Name = "B", Overall = 85 },
-            },
-        };
+        var watchlist = new InMemoryWatchlistRepository();
+        watchlist.Add(Player(2001, "A", 84));
+        watchlist.Add(Player(2002, "B", 85));
 
-        var services = new ServiceCollection();
-        services.AddSingleton<IOpportunityRecomputeService>(recompute);
-        await using var provider = services.BuildServiceProvider();
-
-        var job = new OpportunityRecomputeJob(
-            Options.Create(options),
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            health,
-            NullLogger<OpportunityRecomputeJob>.Instance);
+        var job = BuildJob(recompute, watchlist, health);
 
         var result = await job.RunTickAsync(CancellationToken.None);
 
@@ -57,28 +53,38 @@ public sealed class OpportunityRecomputeJobTests
     {
         var health = new InMemoryJobHealthRegistry();
         var recompute = new RecordingOpportunityRecomputeService();
-        var options = new OpportunityRecomputeOptions
-        {
-            Enabled = true,
-            InitialDelay = TimeSpan.Zero,
-            Interval = TimeSpan.FromHours(1),
-            Players = new List<OpportunityRecomputeWatchlistRow>(),
-        };
+        var watchlist = new InMemoryWatchlistRepository();
 
-        var services = new ServiceCollection();
-        services.AddSingleton<IOpportunityRecomputeService>(recompute);
-        await using var provider = services.BuildServiceProvider();
-
-        var job = new OpportunityRecomputeJob(
-            Options.Create(options),
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            health,
-            NullLogger<OpportunityRecomputeJob>.Instance);
+        var job = BuildJob(recompute, watchlist, health);
 
         var result = await job.RunTickAsync(CancellationToken.None);
 
         result.Status.Should().Be(TickStatus.Success);
         recompute.Batches.Should().BeEmpty();
+    }
+
+    private static OpportunityRecomputeJob BuildJob(
+        IOpportunityRecomputeService recompute,
+        IWatchlistRepository watchlist,
+        IJobHealthRegistry health)
+    {
+        var options = new OpportunityRecomputeOptions
+        {
+            Enabled = true,
+            InitialDelay = TimeSpan.Zero,
+            Interval = TimeSpan.FromHours(1),
+        };
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IOpportunityRecomputeService>(recompute);
+        services.AddSingleton(watchlist);
+        var provider = services.BuildServiceProvider();
+
+        return new OpportunityRecomputeJob(
+            Options.Create(options),
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            health,
+            NullLogger<OpportunityRecomputeJob>.Instance);
     }
 
     private sealed class RecordingOpportunityRecomputeService : IOpportunityRecomputeService

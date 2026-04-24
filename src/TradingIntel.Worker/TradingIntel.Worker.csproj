@@ -12,4 +12,9 @@
     <ProjectReference Include="..\TradingIntel.Application\TradingIntel.Application.csproj" />
     <ProjectReference Include="..\TradingIntel.Infrastructure\TradingIntel.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\data\players-catalog.seed.json" Link="data\players-catalog.seed.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

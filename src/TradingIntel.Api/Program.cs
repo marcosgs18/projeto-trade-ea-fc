@@ -5,8 +5,10 @@ using Microsoft.OpenApi.Models;
 using TradingIntel.Api;
 using TradingIntel.Application;
 using TradingIntel.Application.Trading;
+using TradingIntel.Application.Watchlist;
 using TradingIntel.Infrastructure;
 using TradingIntel.Infrastructure.Persistence;
+using TradingIntel.Infrastructure.Watchlist;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +26,9 @@ builder.Services.Configure<OpportunityRecomputeStaleSettings>(
     builder.Configuration.GetSection("Jobs:OpportunityRecompute"));
 builder.Services.Configure<OpportunityRecomputePlayersSource>(
     builder.Configuration.GetSection("Jobs:OpportunityRecompute"));
+builder.Services
+    .AddOptions<WatchlistSeedOptions>()
+    .Bind(builder.Configuration.GetSection(WatchlistSeedOptions.SectionName));
 builder.Services.AddHealthChecks();
 
 builder.Services.AddEndpointsApiExplorer();
@@ -38,9 +43,15 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// In the Testing environment the WebApplicationFactory provisions an
+// in-memory SQLite connection and is responsible for running both the
+// migration and the watchlist seed after the host starts.
 if (!app.Environment.IsEnvironment("Testing"))
 {
     app.Services.MigrateTradingIntelDatabase();
+    await app.Services
+        .SeedWatchlistAsync(app.Configuration)
+        .ConfigureAwait(false);
 }
 
 app.UseExceptionHandler();

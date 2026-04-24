@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TradingIntel.Infrastructure.Persistence;
+using TradingIntel.Infrastructure.Watchlist;
 
 namespace TradingIntel.Tests.Api;
 
@@ -55,8 +56,18 @@ public class TradingIntelApiFactory : WebApplicationFactory<Program>
     protected override IHost CreateHost(IHostBuilder builder)
     {
         var host = base.CreateHost(builder);
-        using var scope = host.Services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<TradingIntelDbContext>().Database.Migrate();
+        using (var scope = host.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<TradingIntelDbContext>().Database.Migrate();
+        }
+
+        // Production Program.cs skips seeding when IsEnvironment("Testing"),
+        // leaving it to the factory so the in-memory SQLite is migrated first.
+        host.Services
+            .SeedWatchlistAsync(host.Services.GetRequiredService<IConfiguration>())
+            .GetAwaiter()
+            .GetResult();
+
         return host;
     }
 

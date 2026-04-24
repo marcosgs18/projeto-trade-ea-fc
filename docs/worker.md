@@ -115,9 +115,11 @@ Cada job lê sua seção em `appsettings.json` (bind via `IOptions<TOptions>`).
 - O roster de players do `PriceCollection` é **estático** em V1. Decisão registrada: prioriza determinismo e testabilidade enquanto não há ingestão de catálogo que permita descoberta dinâmica.
 - Em `appsettings.Development.json` use intervalos menores para observar o ciclo sem esperar.
 
-## Watchlist de jogadores (`Jobs:*:Players`)
+## Watchlist de jogadores (`tracked_players`)
 
-Os jobs `price-collection` e `opportunity-recompute` operam sobre uma lista **estática** de jogadores configurada por hosting app (`Jobs:PriceCollection:Players` no Worker, `Jobs:OpportunityRecompute:Players` no Worker **e** na API — esta última é consumida pelo `POST /api/opportunities/recompute` quando o body vem sem `playerIds`).
+Os jobs `price-collection` e `opportunity-recompute` operam sobre a tabela **`tracked_players`** (ver [`docs/watchlist.md`](watchlist.md) para o contrato completo) carregada no startup por `WatchlistSeedService`. As seções `Jobs:PriceCollection:Players` e `Jobs:OpportunityRecompute:Players` de `appsettings.json` ainda são reconhecidas, mas apenas para **importar idempotentemente** as entradas legadas para o banco na primeira boot — elas estão **deprecated** e podem ser removidas em uma release futura.
+
+Fontes de povoamento (precedência menor → maior): seed JSON versionado (`data/players-catalog.seed.json`) → `appsettings.Jobs.*.Players` → `POST /api/watchlist`. Entradas criadas por `Api` nunca são sobrescritas por uma re-execução do seed.
 
 ### Shape da entrada
 
@@ -149,18 +151,15 @@ Os jobs `price-collection` e `opportunity-recompute` operam sobre uma lista **es
 
 ### Exemplo funcional (watchlist V1)
 
-Snippet usado em `appsettings.Development.json` após a migração para FUT.GG:
+Povoe via API ou via seed JSON (`data/players-catalog.seed.json`, ver [`docs/watchlist.md`](watchlist.md)):
 
-```jsonc
-"PriceCollection": {
-  "Players": [
-    { "PlayerId": 231747,   "Name": "Kylian Mbappé (base)",        "Overall": 94 },
-    { "PlayerId": 67350350, "Name": "Mbappé Alt (FUT.GG special)", "Overall": 94 }
-  ]
-}
+```bash
+curl -X POST http://localhost:5080/api/watchlist \
+     -H "Content-Type: application/json" \
+     -d '{ "playerId": 231747, "displayName": "Kylian Mbappé (base)", "overall": 94 }'
 ```
 
-A mesma lista serve para `Jobs:OpportunityRecompute:Players` — manter as duas sincronizadas garante que o recompute tem preço para casar com scoring.
+As seções `Jobs:PriceCollection:Players` e `Jobs:OpportunityRecompute:Players` de `appsettings` são reconhecidas **apenas para importar** as entradas na tabela na primeira boot — não use mais isso como "source of truth".
 
 ### Comportamento esperado por tick
 
@@ -181,12 +180,12 @@ A mesma lista serve para `Jobs:OpportunityRecompute:Players` — manter as duas 
 
 ### Watchlist vazia
 
-Com `Players: []` (padrão em `appsettings.Development.json` antes da configuração manual):
+Com `tracked_players` vazio (sem seed, sem `appsettings` e sem `POST /api/watchlist`):
 
-- `price-collection` loga `warn: price-collection has no players configured; nothing to collect.` e conclui o tick como `Success` sem tocar o banco.
-- `opportunity-recompute` loga `OpportunityRecompute: no players to score.` e conclui `Success` sem tocar `trade_opportunities`.
+- `price-collection` loga `warn: price-collection watchlist is empty (tracked_players has no active rows). Add entries through POST /api/watchlist or the data/players-catalog.seed.json file.` e conclui o tick como `Success` sem tocar o banco.
+- `opportunity-recompute` loga `warn: opportunity-recompute watchlist is empty (tracked_players has no active rows); nothing to recompute.` e conclui `Success` sem tocar `trade_opportunities`.
 
-Esse é o estado "neutro" usado em CI e fica sempre verde — o primeiro valor só aparece depois que a watchlist é populada e o Futbin volta a responder 200.
+Esse é o estado "neutro" usado em CI e fica sempre verde.
 
 ## Health interno
 
