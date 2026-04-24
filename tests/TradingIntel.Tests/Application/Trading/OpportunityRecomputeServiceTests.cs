@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TradingIntel.Application.Persistence;
+using TradingIntel.Application.PlayerMarket;
 using TradingIntel.Application.Sbc;
 using TradingIntel.Application.Trading;
 using TradingIntel.Domain.Models;
@@ -65,7 +66,7 @@ public sealed class OpportunityRecomputeServiceTests
             null,
             new Coins(12_000));
 
-        var priceRepo = new StubPlayerPriceRepo { LatestFutbin = current };
+        var priceRepo = new StubPlayerPriceRepo { LatestPrice = current };
         var listingRepo = new StubListingRepo();
         var sbcRepo = new StubSbcRepo { Challenges = Array.Empty<SbcChallenge>() };
         var demand = new RatingBandDemandService(NullLogger<RatingBandDemandService>.Instance);
@@ -80,6 +81,7 @@ public sealed class OpportunityRecomputeServiceTests
             scoring,
             oppRepo,
             Options.Create(new OpportunityRecomputeStaleSettings { StaleAfter = TimeSpan.FromHours(1) }),
+            Options.Create(new MarketSourceOptions { Source = "futbin" }),
             NullLogger<OpportunityRecomputeService>.Instance);
 
         var summary = await svc.RecomputeAsync(
@@ -121,7 +123,7 @@ public sealed class OpportunityRecomputeServiceTests
                 new ExecutionSuggestion(Guid.NewGuid(), oppId, ExecutionAction.ListForSale, new Coins(12_000), NowUtc.AddHours(24)),
             });
 
-        var priceRepo = new StubPlayerPriceRepo { LatestFutbin = current };
+        var priceRepo = new StubPlayerPriceRepo { LatestPrice = current };
         var listingRepo = new StubListingRepo();
         var sbcRepo = new StubSbcRepo { Challenges = Array.Empty<SbcChallenge>() };
         var demand = new RatingBandDemandService(NullLogger<RatingBandDemandService>.Instance);
@@ -136,6 +138,7 @@ public sealed class OpportunityRecomputeServiceTests
             scoring,
             oppRepo,
             Options.Create(new OpportunityRecomputeStaleSettings { StaleAfter = TimeSpan.FromHours(1) }),
+            Options.Create(new MarketSourceOptions { Source = "futbin" }),
             NullLogger<OpportunityRecomputeService>.Instance);
 
         var summary = await svc.RecomputeAsync(
@@ -150,7 +153,7 @@ public sealed class OpportunityRecomputeServiceTests
 
     private sealed class StubPlayerPriceRepo : IPlayerPriceSnapshotRepository
     {
-        public PlayerPriceSnapshot? LatestFutbin { get; set; }
+        public PlayerPriceSnapshot? LatestPrice { get; set; }
 
         public Task AddRangeAsync(IEnumerable<PlayerPriceSnapshot> snapshots, CancellationToken cancellationToken) =>
             Task.CompletedTask;
@@ -168,17 +171,19 @@ public sealed class OpportunityRecomputeServiceTests
             CancellationToken cancellationToken) =>
             Task.FromResult<PlayerPriceSnapshot?>(null);
 
-        public Task<PlayerPriceSnapshot?> GetLatestFutbinPriceForPlayerAsync(
+        public Task<PlayerPriceSnapshot?> GetLatestPriceBySourcePrefixAsync(
             long playerId,
+            string sourcePrefix,
             CancellationToken cancellationToken) =>
-            Task.FromResult(LatestFutbin);
+            Task.FromResult(LatestPrice);
 
-    public Task<IReadOnlyList<PlayerPriceSnapshot>> GetFutbinPriceHistoryAsync(
-        long playerId,
-        DateTime fromUtc,
-        DateTime toUtc,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<PlayerPriceSnapshot>>(Array.Empty<PlayerPriceSnapshot>());
+        public Task<IReadOnlyList<PlayerPriceSnapshot>> GetPriceHistoryBySourcePrefixAsync(
+            long playerId,
+            string sourcePrefix,
+            DateTime fromUtc,
+            DateTime toUtc,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<PlayerPriceSnapshot>>(Array.Empty<PlayerPriceSnapshot>());
 
         public Task<(IReadOnlyList<PlayerPriceSnapshot> Items, int TotalCount)> GetByPlayerPagedAsync(
             long playerId,
@@ -206,12 +211,13 @@ public sealed class OpportunityRecomputeServiceTests
         public Task<MarketListingSnapshot?> GetByListingIdAsync(string listingId, CancellationToken cancellationToken) =>
             Task.FromResult<MarketListingSnapshot?>(null);
 
-    public Task<IReadOnlyList<MarketListingSnapshot>> GetFutbinListingsByPlayerAsync(
-        long playerId,
-        DateTime fromUtc,
-        DateTime toUtc,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<MarketListingSnapshot>>(Array.Empty<MarketListingSnapshot>());
+        public Task<IReadOnlyList<MarketListingSnapshot>> GetListingsByPlayerBySourcePrefixAsync(
+            long playerId,
+            string sourcePrefix,
+            DateTime fromUtc,
+            DateTime toUtc,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<MarketListingSnapshot>>(Array.Empty<MarketListingSnapshot>());
 
         public Task<(IReadOnlyList<MarketListingSnapshot> Items, int TotalCount)> GetByPlayerPagedAsync(
             long playerId,

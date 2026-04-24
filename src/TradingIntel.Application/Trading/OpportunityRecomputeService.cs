@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingIntel.Application.Persistence;
+using TradingIntel.Application.PlayerMarket;
 using TradingIntel.Application.Sbc;
 using TradingIntel.Domain.Models;
 using TradingIntel.Domain.ValueObjects;
@@ -18,6 +19,7 @@ public sealed class OpportunityRecomputeService : IOpportunityRecomputeService
     private readonly ITradeScoringService _tradeScoring;
     private readonly ITradeOpportunityRepository _opportunities;
     private readonly IOptions<OpportunityRecomputeStaleSettings> _staleSettings;
+    private readonly IOptions<MarketSourceOptions> _marketSource;
     private readonly ILogger<OpportunityRecomputeService> _logger;
 
     public OpportunityRecomputeService(
@@ -28,6 +30,7 @@ public sealed class OpportunityRecomputeService : IOpportunityRecomputeService
         ITradeScoringService tradeScoring,
         ITradeOpportunityRepository opportunities,
         IOptions<OpportunityRecomputeStaleSettings> staleSettings,
+        IOptions<MarketSourceOptions> marketSource,
         ILogger<OpportunityRecomputeService> logger)
     {
         _priceSnapshots = priceSnapshots ?? throw new ArgumentNullException(nameof(priceSnapshots));
@@ -37,6 +40,7 @@ public sealed class OpportunityRecomputeService : IOpportunityRecomputeService
         _tradeScoring = tradeScoring ?? throw new ArgumentNullException(nameof(tradeScoring));
         _opportunities = opportunities ?? throw new ArgumentNullException(nameof(opportunities));
         _staleSettings = staleSettings ?? throw new ArgumentNullException(nameof(staleSettings));
+        _marketSource = marketSource ?? throw new ArgumentNullException(nameof(marketSource));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -50,6 +54,7 @@ public sealed class OpportunityRecomputeService : IOpportunityRecomputeService
         var volatilityWindow = TradeScoringWeights.Default.VolatilityWindow;
         var historyFrom = nowUtc - volatilityWindow;
         var listingFrom = nowUtc - ListingLookback;
+        var sourcePrefix = _marketSource.Value.SourcePrefix;
 
         var challenges = await _sbcChallenges
             .QueryAsync(new SbcChallengeQuery { ActiveAsOfUtc = nowUtc }, cancellationToken)
@@ -86,7 +91,7 @@ public sealed class OpportunityRecomputeService : IOpportunityRecomputeService
             var playerRef = new PlayerReference(entry.PlayerId, displayName);
 
             var currentPrice = await _priceSnapshots
-                .GetLatestFutbinPriceForPlayerAsync(entry.PlayerId, cancellationToken)
+                .GetLatestPriceBySourcePrefixAsync(entry.PlayerId, sourcePrefix, cancellationToken)
                 .ConfigureAwait(false);
 
             if (currentPrice is null)
@@ -96,17 +101,18 @@ public sealed class OpportunityRecomputeService : IOpportunityRecomputeService
                     .DeleteByPlayerIdAsync(entry.PlayerId, cancellationToken)
                     .ConfigureAwait(false);
                 _logger.LogInformation(
-                    "OpportunityRecompute: no Futbin price snapshot; removed stale row if any. player={Player}",
+                    "OpportunityRecompute: no price snapshot for source prefix {SourcePrefix}; removed stale row if any. player={Player}",
+                    sourcePrefix,
                     playerRef);
                 continue;
             }
 
             var priceHistory = await _priceSnapshots
-                .GetFutbinPriceHistoryAsync(entry.PlayerId, historyFrom, nowUtc, cancellationToken)
+                .GetPriceHistoryBySourcePrefixAsync(entry.PlayerId, sourcePrefix, historyFrom, nowUtc, cancellationToken)
                 .ConfigureAwait(false);
 
             var recentListings = await _listingSnapshots
-                .GetFutbinListingsByPlayerAsync(entry.PlayerId, listingFrom, nowUtc, cancellationToken)
+                .GetListingsByPlayerBySourcePrefixAsync(entry.PlayerId, sourcePrefix, listingFrom, nowUtc, cancellationToken)
                 .ConfigureAwait(false);
 
             var nearestExpiry = ResolveNearestSbcExpiryUtc(overall, demandByBand, challenges, nowUtc);

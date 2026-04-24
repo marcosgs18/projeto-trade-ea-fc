@@ -1,18 +1,18 @@
-using TradingIntel.Application.Futbin;
+using TradingIntel.Application.PlayerMarket;
 using TradingIntel.Domain.Models;
 using TradingIntel.Domain.ValueObjects;
 
 namespace TradingIntel.Tests.Worker.Fakes;
 
-internal sealed class FakeFutbinMarketClient : IFutbinMarketClient
+internal sealed class FakePlayerMarketClient : IPlayerMarketClient
 {
     public int CallCount { get; private set; }
 
     public List<PlayerReference> Requests { get; } = new();
 
-    public Func<PlayerReference, CancellationToken, Task<FutbinPlayerMarketSnapshot>>? Handler { get; set; }
+    public Func<PlayerReference, CancellationToken, Task<PlayerMarketSnapshot>>? Handler { get; set; }
 
-    public Task<FutbinPlayerMarketSnapshot> GetPlayerMarketSnapshotAsync(PlayerReference player, CancellationToken cancellationToken)
+    public Task<PlayerMarketSnapshot> GetPlayerMarketSnapshotAsync(PlayerReference player, CancellationToken cancellationToken)
     {
         CallCount++;
         Requests.Add(player);
@@ -25,7 +25,7 @@ internal sealed class FakeFutbinMarketClient : IFutbinMarketClient
         return Handler(player, cancellationToken);
     }
 
-    public static FutbinPlayerMarketSnapshot BuildDefaultSnapshot(PlayerReference player)
+    public static PlayerMarketSnapshot BuildDefaultSnapshot(PlayerReference player)
     {
         var capturedAt = new DateTime(2026, 04, 22, 12, 0, 0, DateTimeKind.Utc);
 
@@ -33,7 +33,7 @@ internal sealed class FakeFutbinMarketClient : IFutbinMarketClient
         {
             new PlayerPriceSnapshot(
                 player,
-                source: "futbin",
+                source: "futgg:pc",
                 capturedAtUtc: capturedAt,
                 buyNowPrice: new Coins(10_000m),
                 sellNowPrice: new Coins(11_000m),
@@ -45,15 +45,15 @@ internal sealed class FakeFutbinMarketClient : IFutbinMarketClient
             new MarketListingSnapshot(
                 listingId: $"listing-{player.PlayerId}-1",
                 player,
-                source: "futbin",
+                source: "futgg:pc",
                 capturedAtUtc: capturedAt,
                 startingBid: new Coins(9_500m),
                 buyNowPrice: new Coins(10_000m),
                 expiresAtUtc: capturedAt.AddMinutes(30)),
         };
 
-        return new FutbinPlayerMarketSnapshot(
-            Source: "futbin",
+        return new PlayerMarketSnapshot(
+            Source: "futgg:pc",
             CapturedAtUtc: capturedAt,
             CorrelationId: Guid.NewGuid().ToString("N"),
             RawPayload: "raw-fixture",

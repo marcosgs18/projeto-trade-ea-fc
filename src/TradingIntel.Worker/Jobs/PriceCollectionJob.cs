@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TradingIntel.Application.Futbin;
+using TradingIntel.Application.PlayerMarket;
 using TradingIntel.Application.Persistence;
 using TradingIntel.Domain.ValueObjects;
 using TradingIntel.Application.JobHealth;
@@ -10,11 +10,12 @@ namespace TradingIntel.Worker.Jobs;
 
 /// <summary>
 /// Iterates the configured player watchlist and, for each player, fetches the
-/// Futbin market snapshot via <see cref="IFutbinMarketClient"/> (which writes
-/// the raw payload itself before returning) and persists the normalized
+/// market snapshot via <see cref="IPlayerMarketClient"/> (which writes the raw
+/// payload itself before returning) and persists the normalized
 /// <c>PlayerPriceSnapshot</c> and <c>MarketListingSnapshot</c> collections.
 /// A failure for a single player is logged and skipped so one bad player does
-/// not abort the whole tick or starve the scheduler.
+/// not abort the whole tick or starve the scheduler. The concrete client is
+/// selected by <c>Market:Source</c> (see <c>docs/source-futgg-market.md</c>).
 /// </summary>
 public sealed class PriceCollectionJob : ScheduledJob
 {
@@ -43,7 +44,7 @@ public sealed class PriceCollectionJob : ScheduledJob
             return;
         }
 
-        var client = serviceProvider.GetRequiredService<IFutbinMarketClient>();
+        var client = serviceProvider.GetRequiredService<IPlayerMarketClient>();
         var priceRepo = serviceProvider.GetRequiredService<IPlayerPriceSnapshotRepository>();
         var listingRepo = serviceProvider.GetRequiredService<IMarketListingSnapshotRepository>();
 

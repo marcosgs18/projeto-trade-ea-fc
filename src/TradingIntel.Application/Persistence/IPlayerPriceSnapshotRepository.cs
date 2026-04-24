@@ -18,15 +18,24 @@ public interface IPlayerPriceSnapshotRepository
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Último snapshot Futbin para o jogador (qualquer plataforma: fonte com prefixo <c>futbin:</c>).
+    /// Último snapshot do jogador cuja coluna <c>Source</c> começa com
+    /// <paramref name="sourcePrefix"/> (ex.: <c>"futgg:"</c> casa
+    /// <c>"futgg:pc"</c>, <c>"futgg:console"</c>, …). Permite que o caller
+    /// (recompute / scoring) filtre por uma fonte ativa sem conhecer as
+    /// plataformas concretas.
     /// </summary>
-    Task<PlayerPriceSnapshot?> GetLatestFutbinPriceForPlayerAsync(long playerId, CancellationToken cancellationToken);
+    Task<PlayerPriceSnapshot?> GetLatestPriceBySourcePrefixAsync(
+        long playerId,
+        string sourcePrefix,
+        CancellationToken cancellationToken);
 
     /// <summary>
-    /// Histórico Futbin (<c>futbin:*</c>) na janela temporal.
+    /// Histórico do jogador na janela <c>[fromUtc, toUtc]</c> filtrando por
+    /// snapshots cuja <c>Source</c> começa com <paramref name="sourcePrefix"/>.
     /// </summary>
-    Task<IReadOnlyList<PlayerPriceSnapshot>> GetFutbinPriceHistoryAsync(
+    Task<IReadOnlyList<PlayerPriceSnapshot>> GetPriceHistoryBySourcePrefixAsync(
         long playerId,
+        string sourcePrefix,
         DateTime fromUtc,
         DateTime toUtc,
         CancellationToken cancellationToken);

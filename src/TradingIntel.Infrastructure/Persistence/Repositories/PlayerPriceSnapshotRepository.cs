@@ -56,30 +56,36 @@ public sealed class PlayerPriceSnapshotRepository : IPlayerPriceSnapshotReposito
         return record is null ? null : ToDomain(record);
     }
 
-    public async Task<PlayerPriceSnapshot?> GetLatestFutbinPriceForPlayerAsync(
+    public async Task<PlayerPriceSnapshot?> GetLatestPriceBySourcePrefixAsync(
         long playerId,
+        string sourcePrefix,
         CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePrefix);
+
         var record = await _dbContext.PlayerPriceSnapshots
             .AsNoTracking()
-            .Where(r => r.PlayerId == playerId && r.Source.StartsWith("futbin:"))
+            .Where(r => r.PlayerId == playerId && r.Source.StartsWith(sourcePrefix))
             .OrderByDescending(r => r.CapturedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
         return record is null ? null : ToDomain(record);
     }
 
-    public async Task<IReadOnlyList<PlayerPriceSnapshot>> GetFutbinPriceHistoryAsync(
+    public async Task<IReadOnlyList<PlayerPriceSnapshot>> GetPriceHistoryBySourcePrefixAsync(
         long playerId,
+        string sourcePrefix,
         DateTime fromUtc,
         DateTime toUtc,
         CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePrefix);
+
         var records = await _dbContext.PlayerPriceSnapshots
             .AsNoTracking()
             .Where(r =>
                 r.PlayerId == playerId
-                && r.Source.StartsWith("futbin:")
+                && r.Source.StartsWith(sourcePrefix)
                 && r.CapturedAtUtc >= fromUtc
                 && r.CapturedAtUtc <= toUtc)
             .OrderBy(r => r.CapturedAtUtc)

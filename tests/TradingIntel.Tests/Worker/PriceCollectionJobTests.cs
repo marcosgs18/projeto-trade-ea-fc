@@ -2,7 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using TradingIntel.Application.Futbin;
+using TradingIntel.Application.PlayerMarket;
 using TradingIntel.Application.Persistence;
 using TradingIntel.Tests.Worker.Fakes;
 using TradingIntel.Application.JobHealth;
@@ -16,7 +16,7 @@ public sealed class PriceCollectionJobTests
     [Fact]
     public async Task Successful_tick_persists_normalized_snapshots_and_marks_health_success()
     {
-        var market = new FakeFutbinMarketClient();
+        var market = new FakePlayerMarketClient();
         var prices = new CapturingPlayerPriceSnapshotRepository();
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
@@ -52,7 +52,7 @@ public sealed class PriceCollectionJobTests
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
 
-        var market = new FakeFutbinMarketClient
+        var market = new FakePlayerMarketClient
         {
             Handler = (player, _) =>
             {
@@ -61,7 +61,7 @@ public sealed class PriceCollectionJobTests
                     throw new HttpRequestException("not found");
                 }
 
-                return Task.FromResult(FakeFutbinMarketClient.BuildDefaultSnapshot(player));
+                return Task.FromResult(FakePlayerMarketClient.BuildDefaultSnapshot(player));
             },
         };
 
@@ -90,7 +90,7 @@ public sealed class PriceCollectionJobTests
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
 
-        var market = new FakeFutbinMarketClient
+        var market = new FakePlayerMarketClient
         {
             Handler = (_, _) => throw new HttpRequestException("upstream 503"),
         };
@@ -128,7 +128,7 @@ public sealed class PriceCollectionJobTests
         var health = new InMemoryJobHealthRegistry();
         using var cts = new CancellationTokenSource();
 
-        var market = new FakeFutbinMarketClient
+        var market = new FakePlayerMarketClient
         {
             Handler = async (_, ct) =>
             {
@@ -159,7 +159,7 @@ public sealed class PriceCollectionJobTests
     [Fact]
     public async Task Empty_player_watchlist_is_treated_as_successful_noop()
     {
-        var market = new FakeFutbinMarketClient();
+        var market = new FakePlayerMarketClient();
         var prices = new CapturingPlayerPriceSnapshotRepository();
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
@@ -179,7 +179,7 @@ public sealed class PriceCollectionJobTests
     }
 
     private static PriceCollectionJob BuildJob(
-        IFutbinMarketClient market,
+        IPlayerMarketClient market,
         IPlayerPriceSnapshotRepository prices,
         IMarketListingSnapshotRepository listings,
         IJobHealthRegistry health,

@@ -6,6 +6,7 @@ using TradingIntel.Api;
 using TradingIntel.Application;
 using TradingIntel.Application.Trading;
 using TradingIntel.Infrastructure;
+using TradingIntel.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +37,11 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    app.Services.MigrateTradingIntelDatabase();
+}
 
 app.UseExceptionHandler();
 

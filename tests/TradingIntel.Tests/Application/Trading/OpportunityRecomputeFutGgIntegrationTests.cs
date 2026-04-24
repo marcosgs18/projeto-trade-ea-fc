@@ -18,37 +18,28 @@ using Xunit;
 namespace TradingIntel.Tests.Application.Trading;
 
 /// <summary>
-/// Recompute com SQLite em memória: sem edge o scoring remove a linha persistida.
+/// Garantia de regressão para o bug em que o recompute filtrava só por
+/// <c>Source = futbin:*</c> enquanto o adapter ativo (FUT.GG) gravava com
+/// <c>Source = futgg:pc</c>. O teste exercita o caminho real ponta a ponta:
+/// SQLite + repositórios concretos + scoring real + <see cref="MarketSourceOptions"/>
+/// configurado para <c>futgg</c>; ele deve materializar uma <see cref="TradeOpportunity"/>
+/// na tabela <c>trade_opportunities</c>.
 /// </summary>
-public sealed class OpportunityRecomputePersistenceTests : IClassFixture<PersistenceTestFixture>
+public sealed class OpportunityRecomputeFutGgIntegrationTests : IClassFixture<PersistenceTestFixture>
 {
     private readonly PersistenceTestFixture _fixture;
 
-    public OpportunityRecomputePersistenceTests(PersistenceTestFixture fixture)
+    public OpportunityRecomputeFutGgIntegrationTests(PersistenceTestFixture fixture)
     {
         _fixture = fixture;
     }
 
     [Fact]
-    public async Task Recompute_with_null_score_removes_persisted_opportunity()
+    public async Task Recompute_with_futgg_source_persists_trade_opportunity()
     {
-        var playerId = 70_000 + Random.Shared.Next(1, 5000);
+        var playerId = 80_000 + Random.Shared.Next(1, 5_000);
         var now = DateTime.UtcNow;
-        var player = new PlayerReference(playerId, "Persistence");
-        var oppId = Guid.NewGuid();
-        var opportunity = new TradeOpportunity(
-            oppId,
-            player,
-            now,
-            new Coins(10_000),
-            new Coins(12_000),
-            new ConfidenceScore(0.5m),
-            new[] { new OpportunityReason("TRADE_SCORE", "ok", 0.5m) },
-            new[]
-            {
-                new ExecutionSuggestion(Guid.NewGuid(), oppId, ExecutionAction.Buy, new Coins(10_000), now.AddMinutes(15)),
-                new ExecutionSuggestion(Guid.NewGuid(), oppId, ExecutionAction.ListForSale, new Coins(12_000), now.AddHours(24)),
-            });
+        var player = new PlayerReference(playerId, "FutGg Subject");
 
         var services = new ServiceCollection();
         services.AddLogging();
@@ -60,31 +51,58 @@ public sealed class OpportunityRecomputePersistenceTests : IClassFixture<Persist
         services.AddScoped<IMarketListingSnapshotRepository, MarketListingSnapshotRepository>();
         services.AddScoped<ISbcChallengeRepository, SbcChallengeRepository>();
         services.AddScoped<ITradeOpportunityRepository, TradeOpportunityRepository>();
-        services.AddSingleton<ITradeScoringService>(new StubScoringNull());
         services.AddSingleton(Options.Create(new OpportunityRecomputeStaleSettings { StaleAfter = TimeSpan.FromHours(1) }));
-        services.AddSingleton(Options.Create(new MarketSourceOptions { Source = "futbin" }));
+        services.AddSingleton(Options.Create(new MarketSourceOptions { Source = "futgg" }));
 
         await using var provider = services.BuildServiceProvider();
+
         await using (var scope = provider.CreateAsyncScope())
         {
             var priceRepo = scope.ServiceProvider.GetRequiredService<IPlayerPriceSnapshotRepository>();
-            var oppRepo = scope.ServiceProvider.GetRequiredService<ITradeOpportunityRepository>();
+            var listingRepo = scope.ServiceProvider.GetRequiredService<IMarketListingSnapshotRepository>();
+            var sbcRepo = scope.ServiceProvider.GetRequiredService<ISbcChallengeRepository>();
 
             await priceRepo.AddRangeAsync(
                 new[]
                 {
                     new PlayerPriceSnapshot(
                         player,
-                        "futbin:ps",
+                        "futgg:pc",
                         now,
                         new Coins(10_000),
-                        null,
-                        new Coins(10_500)),
+                        new Coins(12_000),
+                        new Coins(11_500)),
                 },
                 CancellationToken.None);
 
-            await oppRepo.UpsertAsync(opportunity, now, CancellationToken.None);
-            (await oppRepo.ExistsForPlayerAsync(playerId, CancellationToken.None)).Should().BeTrue();
+            await listingRepo.AddRangeAsync(
+                new[]
+                {
+                    new MarketListingSnapshot(
+                        $"listing-{playerId}-1",
+                        player,
+                        "futgg:pc",
+                        now,
+                        new Coins(9_500),
+                        new Coins(10_000),
+                        now.AddHours(1)),
+                },
+                CancellationToken.None);
+
+            await sbcRepo.UpsertRangeAsync(
+                new[]
+                {
+                    new SbcChallenge(
+                        Guid.NewGuid(),
+                        "84+ Upgrade",
+                        "upgrades",
+                        now.AddHours(36),
+                        SbcRepeatability.NotRepeatable(),
+                        "set-upgrades",
+                        now,
+                        new[] { new SbcRequirement("min_team_rating", 84) }),
+                },
+                CancellationToken.None);
         }
 
         await using (var scope = provider.CreateAsyncScope())
@@ -94,23 +112,22 @@ public sealed class OpportunityRecomputePersistenceTests : IClassFixture<Persist
                 scope.ServiceProvider.GetRequiredService<IMarketListingSnapshotRepository>(),
                 scope.ServiceProvider.GetRequiredService<ISbcChallengeRepository>(),
                 new RatingBandDemandService(NullLogger<RatingBandDemandService>.Instance),
-                scope.ServiceProvider.GetRequiredService<ITradeScoringService>(),
+                new TradeScoringService(NullLogger<TradeScoringService>.Instance),
                 scope.ServiceProvider.GetRequiredService<ITradeOpportunityRepository>(),
                 scope.ServiceProvider.GetRequiredService<IOptions<OpportunityRecomputeStaleSettings>>(),
                 scope.ServiceProvider.GetRequiredService<IOptions<MarketSourceOptions>>(),
                 NullLogger<OpportunityRecomputeService>.Instance);
 
-            await svc.RecomputeAsync(
-                new[] { new OpportunityRecomputePlayer(playerId, "Persistence", 84) },
+            var summary = await svc.RecomputeAsync(
+                new[] { new OpportunityRecomputePlayer(playerId, "FutGg Subject", 84) },
                 CancellationToken.None);
 
-            var oppRepo = scope.ServiceProvider.GetRequiredService<ITradeOpportunityRepository>();
-            (await oppRepo.ExistsForPlayerAsync(playerId, CancellationToken.None)).Should().BeFalse();
-        }
-    }
+            summary.Upserted.Should().Be(1);
+            summary.SkippedMissingPrice.Should().Be(0);
 
-    private sealed class StubScoringNull : ITradeScoringService
-    {
-        public TradeOpportunity? Score(TradeScoringInput input, TradeScoringWeights? weights = null) => null;
+            var oppRepo = scope.ServiceProvider.GetRequiredService<ITradeOpportunityRepository>();
+            var exists = await oppRepo.ExistsForPlayerAsync(playerId, CancellationToken.None);
+            exists.Should().BeTrue("o recompute com Market:Source=futgg deve materializar a oportunidade quando há preço futgg:pc + SBC ativo");
+        }
     }
 }

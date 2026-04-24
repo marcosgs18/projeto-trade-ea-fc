@@ -53,17 +53,20 @@ public sealed class MarketListingSnapshotRepository : IMarketListingSnapshotRepo
         return record is null ? null : ToDomain(record);
     }
 
-    public async Task<IReadOnlyList<MarketListingSnapshot>> GetFutbinListingsByPlayerAsync(
+    public async Task<IReadOnlyList<MarketListingSnapshot>> GetListingsByPlayerBySourcePrefixAsync(
         long playerId,
+        string sourcePrefix,
         DateTime fromUtc,
         DateTime toUtc,
         CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePrefix);
+
         var records = await _dbContext.MarketListingSnapshots
             .AsNoTracking()
             .Where(r =>
                 r.PlayerId == playerId
-                && r.Source.StartsWith("futbin:")
+                && r.Source.StartsWith(sourcePrefix)
                 && r.CapturedAtUtc >= fromUtc
                 && r.CapturedAtUtc <= toUtc)
             .OrderBy(r => r.CapturedAtUtc)

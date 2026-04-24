@@ -14,8 +14,8 @@ Todos em `src/TradingIntel.Application/Persistence/`:
 
 - `IRawSnapshotStore` (write-only, já existente) — usada pelos adapters para gravar o payload bruto.
 - `IRawSnapshotRepository` — consulta raw snapshots por `source` + janela temporal, e "último por fonte".
-- `IPlayerPriceSnapshotRepository` — grava em lote e consulta por `playerId` + janela temporal, além de "último por player+source".
-- `IMarketListingSnapshotRepository` — grava em lote, consulta por `playerId` + janela, e lookup por `ListingId`.
+- `IPlayerPriceSnapshotRepository` — grava em lote, consulta por `playerId` + janela temporal e "último por player+source". Os caminhos de scoring usam `GetLatestPriceBySourcePrefixAsync(playerId, sourcePrefix, ct)` e `GetPriceHistoryBySourcePrefixAsync(playerId, sourcePrefix, from, to, ct)` para filtrar por fonte ativa (ex.: `"futgg:"` casa `"futgg:pc"`, `"futgg:console"`).
+- `IMarketListingSnapshotRepository` — grava em lote, consulta por `playerId` + janela, lookup por `ListingId` e janela por fonte via `GetListingsByPlayerBySourcePrefixAsync(playerId, sourcePrefix, from, to, ct)`.
 - `ISbcChallengeRepository` — **upsert por `Id`** (GUID do FUT.GG), consulta composável (`SbcChallengeQuery`) e listagem paginada para a API (`QueryActivePagedAsync` + `SbcActiveListQuery`).
 - `ITradeOpportunityRepository` — última `TradeOpportunity` por jogador (upsert por `PlayerId`), remoção quando não há edge, marcação de obsolescência por TTL de recomputação, consulta paginada (`QueryPagedAsync`) e detalhe por `OpportunityId`.
 - `StoredRawSnapshot` — record retornado pelas consultas, preservando `SourceSnapshotMetadata` + payload.
@@ -150,7 +150,9 @@ E um atalho para o estado mais recente:
 ```csharp
 await rawSnapshotRepository.GetLatestAsync("futbin", cancellationToken);
 await playerPriceRepository.GetLatestForPlayerAsync(playerId, "futbin:ps", cancellationToken);
-await playerPriceRepository.GetLatestFutbinPriceForPlayerAsync(playerId, cancellationToken);
+await playerPriceRepository.GetLatestPriceBySourcePrefixAsync(playerId, "futgg:", cancellationToken);
+await playerPriceRepository.GetPriceHistoryBySourcePrefixAsync(playerId, "futgg:", fromUtc, toUtc, cancellationToken);
+await marketListingRepository.GetListingsByPlayerBySourcePrefixAsync(playerId, "futgg:", fromUtc, toUtc, cancellationToken);
 await playerPriceRepository.GetByPlayerPagedAsync(playerId, source: null, fromUtc, toUtc, skip: 0, take: 50, cancellationToken);
 await marketListingRepository.GetByPlayerPagedAsync(playerId, fromUtc, toUtc, skip: 0, take: 50, cancellationToken);
 ```

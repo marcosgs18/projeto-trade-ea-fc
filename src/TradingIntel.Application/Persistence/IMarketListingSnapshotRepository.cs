@@ -15,10 +15,13 @@ public interface IMarketListingSnapshotRepository
     Task<MarketListingSnapshot?> GetByListingIdAsync(string listingId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Listagens Futbin (<c>futbin:*</c>) na janela temporal.
+    /// Listagens do jogador na janela <c>[fromUtc, toUtc]</c> filtrando por
+    /// snapshots cuja <c>Source</c> começa com <paramref name="sourcePrefix"/>
+    /// (ex.: <c>"futgg:"</c>, <c>"futbin:"</c>).
     /// </summary>
-    Task<IReadOnlyList<MarketListingSnapshot>> GetFutbinListingsByPlayerAsync(
+    Task<IReadOnlyList<MarketListingSnapshot>> GetListingsByPlayerBySourcePrefixAsync(
         long playerId,
+        string sourcePrefix,
         DateTime fromUtc,
         DateTime toUtc,
         CancellationToken cancellationToken);

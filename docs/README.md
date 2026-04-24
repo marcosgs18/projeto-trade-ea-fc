@@ -1,5 +1,6 @@
 # Documentação
 
+- [**Guia de uso passo a passo**](getting-started.md) — do `git clone` até ler oportunidades de trade pela API.
 - [Arquitetura e camadas](architecture.md) — visão inicial alinhada ao código.
 - [Fluxo de desenvolvimento e uso com Cursor Agents](development-workflow.md) — convenções de trabalho, testes e logs.
 - [ADRs](architecture-decision-records/) — decisões arquiteturais.
