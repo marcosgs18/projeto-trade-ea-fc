@@ -53,6 +53,51 @@ public sealed class MarketListingSnapshotRepository : IMarketListingSnapshotRepo
         return record is null ? null : ToDomain(record);
     }
 
+    public async Task<IReadOnlyList<MarketListingSnapshot>> GetListingsByPlayerBySourcePrefixAsync(
+        long playerId,
+        string sourcePrefix,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePrefix);
+
+        var records = await _dbContext.MarketListingSnapshots
+            .AsNoTracking()
+            .Where(r =>
+                r.PlayerId == playerId
+                && r.Source.StartsWith(sourcePrefix)
+                && r.CapturedAtUtc >= fromUtc
+                && r.CapturedAtUtc <= toUtc)
+            .OrderBy(r => r.CapturedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        return records.Select(ToDomain).ToList();
+    }
+
+    public async Task<(IReadOnlyList<MarketListingSnapshot> Items, int TotalCount)> GetByPlayerPagedAsync(
+        long playerId,
+        DateTime fromUtc,
+        DateTime toUtc,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.MarketListingSnapshots
+            .AsNoTracking()
+            .Where(r => r.PlayerId == playerId && r.CapturedAtUtc >= fromUtc && r.CapturedAtUtc <= toUtc)
+            .OrderBy(r => r.CapturedAtUtc);
+
+        var totalCount = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+        var records = await query
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return (records.Select(ToDomain).ToList(), totalCount);
+    }
+
     private static MarketListingSnapshotRecord Map(MarketListingSnapshot snapshot) => new()
     {
         Id = Guid.NewGuid(),

@@ -226,6 +226,62 @@ namespace TradingIntel.Infrastructure.Persistence.Migrations
                     b.ToTable("sbc_challenge_requirements", (string)null);
                 });
 
+            modelBuilder.Entity("TradingIntel.Infrastructure.Persistence.Entities.TradeOpportunityRecord", b =>
+                {
+                    b.Property<long>("PlayerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Confidence")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DetectedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ExpectedBuyPrice")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ExpectedNetMargin")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ExpectedSellPrice")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsStale")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastRecomputedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OpportunityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlayerDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasonsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SuggestionsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("PlayerId");
+
+                    b.HasIndex("IsStale")
+                        .HasDatabaseName("ix_trade_opportunities_is_stale");
+
+                    b.HasIndex("LastRecomputedAtUtc")
+                        .HasDatabaseName("ix_trade_opportunities_last_recomputed");
+
+                    b.HasIndex("OpportunityId")
+                        .HasDatabaseName("ix_trade_opportunities_opportunity_id");
+
+                    b.ToTable("trade_opportunities", (string)null);
+                });
+
             modelBuilder.Entity("TradingIntel.Infrastructure.Persistence.Entities.SbcChallengeRequirementRecord", b =>
                 {
                     b.HasOne("TradingIntel.Infrastructure.Persistence.Entities.SbcChallengeRecord", "Challenge")

@@ -15,20 +15,30 @@ public sealed record FutGgSbcListingItemParsed(
 
 public sealed class FutGgSbcListingParser
 {
-    private static readonly Regex DetailsUrlRegex = new(
-        @"\((?<url>https:\/\/www\.fut\.gg\/sbc\/(?<category>[^\/]+)\/[^)]+\/)\)",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // r.jina.ai embeds a small "FC Coin" icon inside the header link, sometimes
+    // preceded by a formatted coin amount (thousand-separated), e.g.
+    //   `### [Ederson 355,950![Image 18: FC Coin](...)](url)`  (older shape)
+    //   `### [Ederson ![Image 11: FC Coin](...)](url)`         (current shape)
+    //   `### [TOTS Challenge 2](url)`                          (no icon at all)
+    // Stripping the optional coin amount and inline markdown image together lets
+    // us match a plain `### [title](url)` header with a simple, greedy-safe regex
+    // regardless of which variant FUT.GG is currently rendering.
+    private static readonly Regex CoinAmountAndImageRegex = new(
+        @"(?:\s*\d{1,3}(?:,\d{3})+)?\s*!\[[^\]]*\]\([^)]*\)",
+        RegexOptions.Compiled);
 
-    private static readonly Regex TitleLineRegex = new(
-        @"^\s*###\s*\[(?<title>.+?)\s+(?<coins>[0-9,]+)!?\[Image",
+    private static readonly Regex HeaderRegex = new(
+        @"^\s*###\s*\[(?<title>[^\]]+?)\s*\]\((?<url>https:\/\/www\.fut\.gg\/sbc\/(?<category>[^\/]+)\/[^)]+\/)\)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex ExpiresRegex = new(
         @"Expires\s+in\s+(?<value>\d+)\s+(?<unit>hours?|days?)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // FUT.GG renders both `Repeatable 2` (with whitespace) and `Repeatable-`,
+    // `Repeatable∞` (no whitespace). Use \s* so both shapes are captured.
     private static readonly Regex RepeatableRegex = new(
-        @"Repeatable\s+(?<count>\d+|∞|-)",
+        @"Repeatable\s*(?<count>\d+|∞|-)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly ILogger _logger;
@@ -46,9 +56,10 @@ public sealed class FutGgSbcListingParser
         var items = new List<FutGgSbcListingItemParsed>();
 
         // The jina.ai rendered version emits entries like:
-        // ### [Ederson 355,950![Image ...]](https://www.fut.gg/sbc/players/26-830-ederson/)
-        // ...
-        // [Challenges 7]...[Expires in 20 days]...[Repeatable-]...
+        //   ### [Ederson ![Image 11: FC Coin](.../coin.webp)](https://www.fut.gg/sbc/players/26-830-ederson/)
+        // and, for entries without the coin icon:
+        //   ### [TOTS Challenge 2](https://www.fut.gg/sbc/challenges/26-813-tots-challenge-2/)
+        // followed by metadata lines: [Challenges 7]...[Expires in 20 days]...[Repeatable-]
 
         for (var i = 0; i < lines.Length; i++)
         {
@@ -58,10 +69,10 @@ public sealed class FutGgSbcListingParser
                 continue;
             }
 
-            var titleMatch = TitleLineRegex.Match(line);
-            var urlMatch = DetailsUrlRegex.Match(line);
+            var sanitized = CoinAmountAndImageRegex.Replace(line, string.Empty);
+            var headerMatch = HeaderRegex.Match(sanitized);
 
-            if (!titleMatch.Success || !urlMatch.Success)
+            if (!headerMatch.Success)
             {
                 _logger.LogWarning(
                     "Failed to parse FUT.GG SBC header line. lineIndex={LineIndex} line={Line}",
@@ -70,43 +81,55 @@ public sealed class FutGgSbcListingParser
                 continue;
             }
 
-            var title = titleMatch.Groups["title"].Value.Trim();
-            var detailsUrl = urlMatch.Groups["url"].Value.Trim();
-            var category = urlMatch.Groups["category"].Value.Trim();
+            var title = headerMatch.Groups["title"].Value.Trim();
+            var detailsUrl = headerMatch.Groups["url"].Value.Trim();
+            var category = headerMatch.Groups["category"].Value.Trim();
 
             DateTime? expiresAtUtc = null;
             int? repeatableCount = null;
             bool repeatableUnlimited = false;
 
-            // search a small window ahead for metadata lines
-            for (var j = i; j < Math.Min(i + 12, lines.Length); j++)
+            // Walk a small window ahead for metadata, but stop at the next `### [`
+            // header so we never inherit expiry/repeatable values from the
+            // following SBC entry.
+            for (var j = i + 1; j < Math.Min(i + 12, lines.Length); j++)
             {
                 var meta = lines[j];
-
-                var expires = ExpiresRegex.Match(meta);
-                if (expires.Success)
+                if (meta.TrimStart().StartsWith("### [", StringComparison.OrdinalIgnoreCase))
                 {
-                    expiresAtUtc = TryComputeExpiry(capturedAtUtc, expires.Groups["value"].Value, expires.Groups["unit"].Value);
+                    break;
                 }
 
-                var repeat = RepeatableRegex.Match(meta);
-                if (repeat.Success)
+                if (expiresAtUtc is null)
                 {
-                    var raw = repeat.Groups["count"].Value;
-                    if (raw == "∞")
+                    var expires = ExpiresRegex.Match(meta);
+                    if (expires.Success)
                     {
-                        repeatableUnlimited = true;
-                        repeatableCount = null;
+                        expiresAtUtc = TryComputeExpiry(capturedAtUtc, expires.Groups["value"].Value, expires.Groups["unit"].Value);
                     }
-                    else if (raw == "-")
+                }
+
+                if (repeatableCount is null && !repeatableUnlimited)
+                {
+                    var repeat = RepeatableRegex.Match(meta);
+                    if (repeat.Success)
                     {
-                        repeatableCount = null;
-                        repeatableUnlimited = false;
-                    }
-                    else if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCount))
-                    {
-                        repeatableCount = parsedCount;
-                        repeatableUnlimited = false;
+                        var raw = repeat.Groups["count"].Value;
+                        if (raw == "∞")
+                        {
+                            repeatableUnlimited = true;
+                            repeatableCount = null;
+                        }
+                        else if (raw == "-")
+                        {
+                            repeatableCount = null;
+                            repeatableUnlimited = false;
+                        }
+                        else if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCount))
+                        {
+                            repeatableCount = parsedCount;
+                            repeatableUnlimited = false;
+                        }
                     }
                 }
             }

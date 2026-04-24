@@ -55,7 +55,9 @@ dotnet test TradingIntel.sln
 dotnet run --project src/TradingIntel.Api
 ```
 
-Com a Api em execução, o endpoint de saúde responde em `/health` (HTTP 200).
+Com a Api em execução, o endpoint de saúde responde em `/health` (HTTP 200) e o Swagger fica em `/swagger` (em `Development`).
+
+> Para ir do clone até ver oportunidades de trade na API, siga o [**Guia de uso passo a passo**](docs/getting-started.md).
 
 ## Convenções
 

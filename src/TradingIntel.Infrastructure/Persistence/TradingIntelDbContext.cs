@@ -20,6 +20,8 @@ public sealed class TradingIntelDbContext : DbContext
 
     internal DbSet<SbcChallengeRequirementRecord> SbcChallengeRequirements => Set<SbcChallengeRequirementRecord>();
 
+    internal DbSet<TradeOpportunityRecord> TradeOpportunities => Set<TradeOpportunityRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<RawSnapshotRecord>(entity =>
@@ -84,6 +86,23 @@ public sealed class TradingIntelDbContext : DbContext
             entity.Property(e => e.Key).IsRequired().HasMaxLength(128);
             entity.HasIndex(e => e.ChallengeId).HasDatabaseName("ix_sbc_challenge_requirements_challenge_id");
             entity.HasIndex(e => new { e.Key, e.Minimum }).HasDatabaseName("ix_sbc_challenge_requirements_key_minimum");
+        });
+
+        modelBuilder.Entity<TradeOpportunityRecord>(entity =>
+        {
+            entity.ToTable("trade_opportunities");
+            entity.HasKey(e => e.PlayerId);
+            entity.Property(e => e.PlayerId).ValueGeneratedNever();
+            entity.Property(e => e.PlayerDisplayName).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.ExpectedBuyPrice).HasColumnType("TEXT");
+            entity.Property(e => e.ExpectedSellPrice).HasColumnType("TEXT");
+            entity.Property(e => e.ExpectedNetMargin).HasColumnType("TEXT");
+            entity.Property(e => e.Confidence).HasColumnType("TEXT");
+            entity.Property(e => e.ReasonsJson).IsRequired();
+            entity.Property(e => e.SuggestionsJson).IsRequired();
+            entity.HasIndex(e => e.LastRecomputedAtUtc).HasDatabaseName("ix_trade_opportunities_last_recomputed");
+            entity.HasIndex(e => e.IsStale).HasDatabaseName("ix_trade_opportunities_is_stale");
+            entity.HasIndex(e => e.OpportunityId).HasDatabaseName("ix_trade_opportunities_opportunity_id");
         });
     }
 }

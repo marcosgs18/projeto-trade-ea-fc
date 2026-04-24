@@ -14,9 +14,10 @@ Todos em `src/TradingIntel.Application/Persistence/`:
 
 - `IRawSnapshotStore` (write-only, já existente) — usada pelos adapters para gravar o payload bruto.
 - `IRawSnapshotRepository` — consulta raw snapshots por `source` + janela temporal, e "último por fonte".
-- `IPlayerPriceSnapshotRepository` — grava em lote e consulta por `playerId` + janela temporal, além de "último por player+source".
-- `IMarketListingSnapshotRepository` — grava em lote, consulta por `playerId` + janela, e lookup por `ListingId`.
-- `ISbcChallengeRepository` — **upsert por `Id`** (GUID do FUT.GG) e consulta composável (`SbcChallengeQuery`): `ActiveAsOfUtc` (SBCs ativos no instante), `CategoryContains` (substring, case-insensitive) e `MatchesOverall` (SBCs que um overall ajuda a cumprir — filtra por keys `min_team_rating` / `squad_rating`).
+- `IPlayerPriceSnapshotRepository` — grava em lote, consulta por `playerId` + janela temporal e "último por player+source". Os caminhos de scoring usam `GetLatestPriceBySourcePrefixAsync(playerId, sourcePrefix, ct)` e `GetPriceHistoryBySourcePrefixAsync(playerId, sourcePrefix, from, to, ct)` para filtrar por fonte ativa (ex.: `"futgg:"` casa `"futgg:pc"`, `"futgg:console"`).
+- `IMarketListingSnapshotRepository` — grava em lote, consulta por `playerId` + janela, lookup por `ListingId` e janela por fonte via `GetListingsByPlayerBySourcePrefixAsync(playerId, sourcePrefix, from, to, ct)`.
+- `ISbcChallengeRepository` — **upsert por `Id`** (GUID do FUT.GG), consulta composável (`SbcChallengeQuery`) e listagem paginada para a API (`QueryActivePagedAsync` + `SbcActiveListQuery`).
+- `ITradeOpportunityRepository` — última `TradeOpportunity` por jogador (upsert por `PlayerId`), remoção quando não há edge, marcação de obsolescência por TTL de recomputação, consulta paginada (`QueryPagedAsync`) e detalhe por `OpportunityId`.
 - `StoredRawSnapshot` — record retornado pelas consultas, preservando `SourceSnapshotMetadata` + payload.
 
 Os repositórios recebem e retornam **modelos de domínio** (`PlayerPriceSnapshot`, `MarketListingSnapshot`) — não expõem tipos de infraestrutura.
@@ -114,6 +115,26 @@ Tabela filha normalizada (uma linha por requirement). Permite filtrar SBCs por c
 
 A cada tick do `SbcCollectionJob`, os requirements do challenge são **substituídos integralmente** (delete cascateado + reinsert) para refletir fielmente a forma atual do SBC.
 
+### `trade_opportunities`
+
+Última oportunidade de trade conhecida por jogador (uma linha por `PlayerId`). `Reasons` e `Suggestions` são JSON (domínio serializado). O job `OpportunityRecomputeJob` e o endpoint `POST /api/opportunities/recompute` alimentam esta tabela via `IOpportunityRecomputeService`.
+
+| Coluna | Tipo | Notas |
+| --- | --- | --- |
+| `PlayerId` | `INTEGER` | PK |
+| `OpportunityId` | `TEXT` (GUID) | id da `TradeOpportunity` no domínio |
+| `PlayerDisplayName` | `TEXT(256)` | |
+| `DetectedAtUtc` | `TEXT` (UTC) | |
+| `ExpectedBuyPrice` / `ExpectedSellPrice` | `TEXT` (decimal) | |
+| `ExpectedNetMargin` | `TEXT` (decimal) | margem líquida após taxa (filtros na API) |
+| `Confidence` | `TEXT` (decimal) | score `[0, 1]` |
+| `ReasonsJson` | `TEXT` | array de `OpportunityReason` |
+| `SuggestionsJson` | `TEXT` | array de `ExecutionSuggestion` |
+| `LastRecomputedAtUtc` | `TEXT` (UTC) | último tick que atualizou a linha |
+| `IsStale` | `INTEGER` (0/1) | `true` quando `LastRecomputedAtUtc` fica mais antigo que `StaleAfter` configurado |
+
+Índices: `ix_trade_opportunities_last_recomputed`, `ix_trade_opportunities_is_stale`, `ix_trade_opportunities_opportunity_id` (`OpportunityId`).
+
 ## Consulta temporal
 
 Todos os repositórios oferecem uma janela `[fromUtc, toUtc]` inclusiva para histórico:
@@ -129,6 +150,11 @@ E um atalho para o estado mais recente:
 ```csharp
 await rawSnapshotRepository.GetLatestAsync("futbin", cancellationToken);
 await playerPriceRepository.GetLatestForPlayerAsync(playerId, "futbin:ps", cancellationToken);
+await playerPriceRepository.GetLatestPriceBySourcePrefixAsync(playerId, "futgg:", cancellationToken);
+await playerPriceRepository.GetPriceHistoryBySourcePrefixAsync(playerId, "futgg:", fromUtc, toUtc, cancellationToken);
+await marketListingRepository.GetListingsByPlayerBySourcePrefixAsync(playerId, "futgg:", fromUtc, toUtc, cancellationToken);
+await playerPriceRepository.GetByPlayerPagedAsync(playerId, source: null, fromUtc, toUtc, skip: 0, take: 50, cancellationToken);
+await marketListingRepository.GetByPlayerPagedAsync(playerId, fromUtc, toUtc, skip: 0, take: 50, cancellationToken);
 ```
 
 Os resultados vêm ordenados por `CapturedAtUtc` (crescente em janelas, decrescente em "latest"). As colunas são indexadas por `(PlayerId, CapturedAtUtc)` / `(Source, CapturedAtUtc)`, o que mantém queries eficientes mesmo com milhões de snapshots.
@@ -176,6 +202,7 @@ Cobertura atual:
 - Idempotência de `AddRangeAsync` vazio.
 - `UTC kind` preservado no round-trip.
 - SBCs: upsert insere, upsert é idempotente por `Id` e substitui requirements; `QueryAsync` filtra por `ActiveAsOfUtc`, `CategoryContains` e `MatchesOverall`; `UpsertRangeAsync` vazio é no-op.
+- Oportunidades: `ITradeOpportunityRepository` upsert/delete/`MarkStaleWhereLastRecomputedBeforeAsync`; integração cobre remoção após recompute sem edge.
 
 ## Troca de provider
 

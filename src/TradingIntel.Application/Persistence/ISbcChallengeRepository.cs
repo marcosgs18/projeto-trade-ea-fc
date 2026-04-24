@@ -29,4 +29,13 @@ public interface ISbcChallengeRepository
     Task<IReadOnlyList<SbcChallenge>> QueryAsync(
         SbcChallengeQuery query,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lista paginada para a API de SBCs ativos/expirados com filtros compostos.
+    /// </summary>
+    Task<(IReadOnlyList<SbcChallenge> Items, int TotalCount)> QueryActivePagedAsync(
+        SbcActiveListQuery query,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
 }

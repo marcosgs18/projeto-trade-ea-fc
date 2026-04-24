@@ -149,6 +149,67 @@ public sealed class SbcChallengeRepository : ISbcChallengeRepository
         return records.Select(ToDomain).ToList();
     }
 
+    public async Task<(IReadOnlyList<SbcChallenge> Items, int TotalCount)> QueryActivePagedAsync(
+        SbcActiveListQuery query,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (query.ActiveAsOfUtc.Kind != DateTimeKind.Utc)
+        {
+            throw new ArgumentException("ActiveAsOfUtc must be UTC.", nameof(query));
+        }
+
+        if (query.ExpiresBeforeUtc is { Kind: not DateTimeKind.Utc })
+        {
+            throw new ArgumentException("ExpiresBeforeUtc must be UTC when provided.", nameof(query));
+        }
+
+        IQueryable<SbcChallengeRecord> q = _dbContext.SbcChallenges
+            .AsNoTracking()
+            .Include(c => c.Requirements);
+
+        if (!query.IncludeExpired)
+        {
+            q = q.Where(c => c.ExpiresAtUtc == null || c.ExpiresAtUtc > query.ActiveAsOfUtc);
+        }
+
+        if (query.ExpiresBeforeUtc is { } expiresBefore)
+        {
+            q = q.Where(c => c.ExpiresAtUtc != null && c.ExpiresAtUtc <= expiresBefore);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.CategoryContains))
+        {
+            var needle = query.CategoryContains;
+            q = q.Where(c => EF.Functions.Like(c.Category, "%" + needle + "%"));
+        }
+
+        if (query.RequiresOverall is { } overall)
+        {
+            var keys = SbcChallengeQuery.TeamRatingRequirementKeys
+                .Select(k => k.ToLowerInvariant())
+                .ToList();
+            q = q.Where(c => c.Requirements.Any(r =>
+                keys.Contains(r.Key.ToLower()) && r.Minimum <= overall));
+        }
+
+        q = q
+            .OrderBy(c => c.ExpiresAtUtc == null ? 1 : 0)
+            .ThenBy(c => c.ExpiresAtUtc)
+            .ThenBy(c => c.Title);
+
+        var totalCount = await q.CountAsync(cancellationToken).ConfigureAwait(false);
+        var records = await q
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return (records.Select(ToDomain).ToList(), totalCount);
+    }
+
     private static IEnumerable<SbcChallengeRequirementRecord> BuildRequirementRecords(SbcChallenge challenge)
     {
         return challenge.Requirements.Select((req, index) => new SbcChallengeRequirementRecord

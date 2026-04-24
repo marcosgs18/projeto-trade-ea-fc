@@ -58,3 +58,6 @@ $RECYCLE.BIN/
 
 ## ASP.NET
 **/wwwroot/lib/
+
+## Local SQLite dev databases
+*.db

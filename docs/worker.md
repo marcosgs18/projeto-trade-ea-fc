@@ -6,26 +6,44 @@ Host genérico (`Microsoft.Extensions.Hosting`) que agenda e executa jobs de col
 
 | Job | Nome interno | Fonte | Persistência |
 | --- | --- | --- | --- |
-| SBC collection | `sbc-collection` | `IFutGgSbcClient` | Raw (feito pelo próprio client via `IRawSnapshotStore`); normalizado ainda não tem repositório (V1) — apenas logado. |
-| Price collection | `price-collection` | `IFutbinMarketClient` | Raw (feito pelo client) + normalizado via `IPlayerPriceSnapshotRepository` e `IMarketListingSnapshotRepository`. |
+| SBC collection | `sbc-collection` | `IFutGgSbcClient` | Raw (client via `IRawSnapshotStore`) + normalizado `ISbcChallengeRepository`. |
+| Price collection | `price-collection` | `IPlayerMarketClient` (FUT.GG por padrão; ver `Market:Source`) | Raw (client) + `IPlayerPriceSnapshotRepository` / `IMarketListingSnapshotRepository`. |
+| Opportunity recompute | `opportunity-recompute` | `IOpportunityRecomputeService` (preços da fonte ativa, SBCs, demanda, `ITradeScoringService`) | `ITradeOpportunityRepository` + marcação `IsStale` por `StaleAfter`. |
 
-> **Invariante "raw antes de normalizado"**: os clients `FutGgSbcClient` e `FutbinMarketClient` gravam o payload bruto via `IRawSnapshotStore` **antes** de retornar os objetos parseados. Logo, quando o Worker recebe o snapshot para persistir o normalizado, o raw já está salvo. O Worker não precisa (e não deve) gravar o raw novamente.
+> **Invariante "raw antes de normalizado"**: os clients (`FutGgSbcClient`, `FutGgMarketClient`, `FutbinMarketClient`) gravam o payload bruto via `IRawSnapshotStore` **antes** de retornar os objetos parseados. Logo, quando o Worker recebe o snapshot para persistir o normalizado, o raw já está salvo. O Worker não precisa (e não deve) gravar o raw novamente.
+
+### Seleção de fonte de market (`Market:Source`)
+
+A fonte concreta por trás de `IPlayerMarketClient` é escolhida em DI pela chave `Market:Source`:
+
+| Valor | Client registrado | Estado |
+| --- | --- | --- |
+| `futgg` (default) | `FutGgMarketClient` | Recomendado. API JSON pública, sem Cloudflare no endpoint de preços. |
+| `futbin` | `FutbinMarketClient` | Mantido como fallback para quando houver proxy WAF autorizado. |
+
+A configuração do FUT.GG fica em `Market:FutGg` (BaseUrl, Season, Platforms). Detalhes em `docs/source-futgg-market.md`.
+
+> **Importante**: o mesmo valor de `Market:Source` é também o filtro de leitura usado pelo `OpportunityRecomputeService` (ele resolve o prefixo a partir de `MarketSourceOptions.SourcePrefix`, p. ex. `"futgg:"`). Então **a fonte que escreve e a fonte que lê são sempre a mesma** — trocar `Market:Source` exige restart e o pipeline volta a casar escrita ↔ leitura sem código adicional.
 
 ## Arquitetura
 
 ```
+TradingIntel.Application
+└── JobHealth/                         # registry de health dos jobs (compartilhado com a API)
+    ├── IJobHealthRegistry.cs
+    ├── InMemoryJobHealthRegistry.cs
+    └── JobHealthSnapshot.cs
+
 TradingIntel.Worker
-├── Health/
-│   ├── IJobHealthRegistry.cs          # contrato
-│   ├── InMemoryJobHealthRegistry.cs   # impl singleton, thread-safe
-│   └── JobHealthSnapshot.cs           # snapshot imutável de estado
 ├── Jobs/
 │   ├── JobScheduleOptions.cs          # knobs bound do config (Enabled, Interval, …)
 │   ├── ScheduledJob.cs                # base abstrata (PeriodicTimer + backoff + health)
 │   ├── TickResult.cs                  # resultado classificado (Success / Failure / Cancelled)
 │   ├── SbcCollectionJob.cs            # job 1
 │   ├── PriceCollectionJob.cs          # job 2
-│   └── PriceCollectionOptions.cs      # watchlist estática para o job de preço
+│   ├── OpportunityRecomputeJob.cs     # job 3 — score + persistência
+│   ├── PriceCollectionOptions.cs      # watchlist estática para o job de preço
+│   └── OpportunityRecomputeOptions.cs # watchlist + StaleAfter + agendamento
 ├── WorkerServiceCollectionExtensions.cs  # AddCollectionJobs(IConfiguration)
 └── Program.cs                         # Host genérico
 ```
@@ -74,7 +92,19 @@ Cada job lê sua seção em `appsettings.json` (bind via `IOptions<TOptions>`).
       "MaxBackoff": "00:30:00",
       "BackoffMultiplier": 2.0,
       "Players": [
-        { "PlayerId": 12345, "Name": "Example Player" }
+        { "PlayerId": 21747, "Name": "Kylian Mbappé", "Overall": 94 }
+      ]
+    },
+    "OpportunityRecompute": {
+      "Enabled": true,
+      "InitialDelay": "00:00:15",
+      "Interval": "00:05:00",
+      "InitialBackoff": "00:00:30",
+      "MaxBackoff": "00:30:00",
+      "BackoffMultiplier": 2.0,
+      "StaleAfter": "00:15:00",
+      "Players": [
+        { "PlayerId": 21747, "Name": "Kylian Mbappé", "Overall": 94 }
       ]
     }
   }
@@ -84,6 +114,79 @@ Cada job lê sua seção em `appsettings.json` (bind via `IOptions<TOptions>`).
 - `Enabled=false` mantém o job instanciado mas ele retorna sem agendar (útil pra desligar só uma fonte sem remover do DI).
 - O roster de players do `PriceCollection` é **estático** em V1. Decisão registrada: prioriza determinismo e testabilidade enquanto não há ingestão de catálogo que permita descoberta dinâmica.
 - Em `appsettings.Development.json` use intervalos menores para observar o ciclo sem esperar.
+
+## Watchlist de jogadores (`Jobs:*:Players`)
+
+Os jobs `price-collection` e `opportunity-recompute` operam sobre uma lista **estática** de jogadores configurada por hosting app (`Jobs:PriceCollection:Players` no Worker, `Jobs:OpportunityRecompute:Players` no Worker **e** na API — esta última é consumida pelo `POST /api/opportunities/recompute` quando o body vem sem `playerIds`).
+
+### Shape da entrada
+
+```jsonc
+{
+  "PlayerId": 231747,         // obrigatório: FUT.GG eaId (long). Veja docs/source-futgg-market.md.
+  "Name": "Kylian Mbappé",    // opcional: rótulo humano usado apenas em logs
+  "Overall": 94               // opcional: overall do card; usado pelo scoring
+}
+```
+
+- `PlayerId` é a única chave funcional. Desde a migração `Market:Source = futgg` (V1), `PlayerId` é o **`eaId` do FUT.GG**, não o id do FUTBIN — os dois sistemas usam espaços de id incompatíveis. Ex.: Mbappé base = `231747` no FUT.GG vs. `21747` no FUTBIN.
+- `Name` não é normalizado nem validado; serve só para debug de logs (`price-collection failed to collect player 231747 (Kylian Mbappé); ...`).
+- `Overall` é opcional; quando ausente, `opportunity-recompute` incrementa o contador `skippedOverall` e o jogador é ignorado no tick (a recompute atual exige o rating para casar contra requisitos de SBCs).
+
+### Como descobrir o `PlayerId` (eaId do FUT.GG)
+
+1. Abra o jogador em `https://www.fut.gg/players/<eaId>-<slug>/<season>-<eaId>/`.
+2. O `<eaId>` na URL é exatamente o valor de `PlayerId`. Exemplos:
+   - `https://www.fut.gg/players/231747-kylian-mbappe/26-231747/` → `231747` (carta base).
+   - `https://www.fut.gg/players/231747-kylian-mbappe/26-67350350/` → `67350350` (versão especial/promo).
+3. Valide com um curl:
+
+   ```bash
+   curl -A "Mozilla/5.0" "https://www.fut.gg/api/fut/player-prices/26/<eaId>/?platform=pc"
+   ```
+
+   Se retornar `{"data": {"currentPrice": { "price": N, ... }}}` com `N > 0`, o id está correto e tradeável. Ver detalhes e schema completo em `docs/source-futgg-market.md`.
+
+### Exemplo funcional (watchlist V1)
+
+Snippet usado em `appsettings.Development.json` após a migração para FUT.GG:
+
+```jsonc
+"PriceCollection": {
+  "Players": [
+    { "PlayerId": 231747,   "Name": "Kylian Mbappé (base)",        "Overall": 94 },
+    { "PlayerId": 67350350, "Name": "Mbappé Alt (FUT.GG special)", "Overall": 94 }
+  ]
+}
+```
+
+A mesma lista serve para `Jobs:OpportunityRecompute:Players` — manter as duas sincronizadas garante que o recompute tem preço para casar com scoring.
+
+### Comportamento esperado por tick
+
+- **`price-collection`**: itera pela lista, chama `IPlayerMarketClient.GetPlayerMarketSnapshotAsync(playerRef)` por entrada. Com FUT.GG, uma coleta por player resulta em: 1 `PlayerPriceSnapshot` por plataforma em `Market:FutGg:Platforms` + N `MarketListingSnapshot` vindos de `liveAuctions` (uma entry por auction viva). Uma falha por player é logada como `Warning` e o tick continua; o tick só falha (com backoff) se **todos** os players falharem.
+- **`opportunity-recompute`**: constrói `PlayerReference` a partir das linhas, resolve preço mais recente via `IPlayerPriceSnapshotRepository`, casa contra SBCs ativos e aciona `ITradeScoringService.Score()`. Contadores emitidos no log final do tick:
+
+  ```
+  OpportunityRecompute: done. upserted=<n> removedNoEdge=<n> skippedOverall=<n> skippedPrice=<n> staleMarked=<n>
+  ```
+
+  - `skippedPrice` aumenta quando não há preço recente para o player (ex.: primeiro run antes do `price-collection` ter rodado).
+  - `skippedOverall` aumenta quando `Overall` é `null`.
+  - `staleMarked` é o número de `trade_opportunities` que foram marcados `IsStale=true` neste tick por não terem sido re-scored dentro de `StaleAfter`.
+
+### Fonte alternativa: FUTBIN (Cloudflare)
+
+`www.futbin.com` responde `HTTP 403` a clientes HTTP "nus" por causa de Cloudflare. Por isso a V1 **não usa FUTBIN por padrão** — o adapter `FutbinMarketClient` permanece registrado e selecionável via `Market:Source = "futbin"`, mas só é utilizável atrás de um proxy WAF autorizado (ver `docs/source-futbin.md`). O `sbc-collection` **não** é afetado: usa `r.jina.ai` como fachada pública e coleta os SBCs normalmente.
+
+### Watchlist vazia
+
+Com `Players: []` (padrão em `appsettings.Development.json` antes da configuração manual):
+
+- `price-collection` loga `warn: price-collection has no players configured; nothing to collect.` e conclui o tick como `Success` sem tocar o banco.
+- `opportunity-recompute` loga `OpportunityRecompute: no players to score.` e conclui `Success` sem tocar `trade_opportunities`.
+
+Esse é o estado "neutro" usado em CI e fica sempre verde — o primeiro valor só aparece depois que a watchlist é populada e o Futbin volta a responder 200.
 
 ## Health interno
 
@@ -99,7 +202,7 @@ Cada job lê sua seção em `appsettings.json` (bind via `IOptions<TOptions>`).
 | `ConsecutiveFailures` | Reseta em 0 a cada sucesso. |
 | `NextTickUtc` | Instante calculado do próximo tick (`Interval` ou backoff atual). |
 
-Hoje o registry não é exposto via HTTP — pode ser consumido em testes de diagnóstico ou numa futura integração com `TradingIntel.Api` (ex.: endpoint `/health/jobs`).
+A API expõe esse registry em `GET /api/jobs/health` (ver `docs/api.md`). **Ressalva importante**: `InMemoryJobHealthRegistry` é `Singleton` **em memória por processo**, então a API só vê os jobs registrados **no próprio processo da API** (hoje, apenas o tick que `POST /api/opportunities/recompute` dispara — veja observação abaixo). Os jobs do Worker rodam em outro processo e o registry deles não é compartilhado. Um backend persistido (Redis / tabela `job_health`) é o próximo passo se/quando a API precisar enxergar a saúde do Worker em tempo real.
 
 ## Logs estruturados
 

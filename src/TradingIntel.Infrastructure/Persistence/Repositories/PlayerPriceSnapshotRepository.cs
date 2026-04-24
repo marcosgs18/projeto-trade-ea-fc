@@ -56,6 +56,74 @@ public sealed class PlayerPriceSnapshotRepository : IPlayerPriceSnapshotReposito
         return record is null ? null : ToDomain(record);
     }
 
+    public async Task<PlayerPriceSnapshot?> GetLatestPriceBySourcePrefixAsync(
+        long playerId,
+        string sourcePrefix,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePrefix);
+
+        var record = await _dbContext.PlayerPriceSnapshots
+            .AsNoTracking()
+            .Where(r => r.PlayerId == playerId && r.Source.StartsWith(sourcePrefix))
+            .OrderByDescending(r => r.CapturedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return record is null ? null : ToDomain(record);
+    }
+
+    public async Task<IReadOnlyList<PlayerPriceSnapshot>> GetPriceHistoryBySourcePrefixAsync(
+        long playerId,
+        string sourcePrefix,
+        DateTime fromUtc,
+        DateTime toUtc,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePrefix);
+
+        var records = await _dbContext.PlayerPriceSnapshots
+            .AsNoTracking()
+            .Where(r =>
+                r.PlayerId == playerId
+                && r.Source.StartsWith(sourcePrefix)
+                && r.CapturedAtUtc >= fromUtc
+                && r.CapturedAtUtc <= toUtc)
+            .OrderBy(r => r.CapturedAtUtc)
+            .ToListAsync(cancellationToken);
+
+        return records.Select(ToDomain).ToList();
+    }
+
+    public async Task<(IReadOnlyList<PlayerPriceSnapshot> Items, int TotalCount)> GetByPlayerPagedAsync(
+        long playerId,
+        string? source,
+        DateTime fromUtc,
+        DateTime toUtc,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var query = _dbContext.PlayerPriceSnapshots
+            .AsNoTracking()
+            .Where(r => r.PlayerId == playerId && r.CapturedAtUtc >= fromUtc && r.CapturedAtUtc <= toUtc);
+
+        if (!string.IsNullOrWhiteSpace(source))
+        {
+            query = query.Where(r => r.Source == source);
+        }
+
+        query = query.OrderBy(r => r.CapturedAtUtc);
+
+        var totalCount = await query.CountAsync(cancellationToken).ConfigureAwait(false);
+        var records = await query
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return (records.Select(ToDomain).ToList(), totalCount);
+    }
+
     private static PlayerPriceSnapshotRecord Map(PlayerPriceSnapshot snapshot) => new()
     {
         Id = Guid.NewGuid(),

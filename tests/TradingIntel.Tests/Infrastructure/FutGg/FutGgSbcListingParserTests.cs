@@ -44,5 +44,42 @@ Some random line without expires/repeatable.
         items[0].RepeatableCount.Should().BeNull();
         items[0].RepeatableUnlimited.Should().BeFalse();
     }
+
+    [Fact]
+    public void ParseListing_handles_current_header_shapes()
+    {
+        // Regression fixture built from the headers FUT.GG currently renders via
+        // r.jina.ai (mixture of: title+coin icon, title only, and legacy
+        // title+coin-amount+icon). All three must produce valid items with the
+        // title stripped of any coin amount.
+        var fixturePath = Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+            "tests", "fixtures", "futgg", "sbc-listing-headers.md");
+        var payload = File.ReadAllText(fixturePath);
+
+        var parser = new FutGgSbcListingParser(NullLogger.Instance);
+        var capturedAt = new DateTime(2026, 04, 23, 04, 28, 56, DateTimeKind.Utc);
+
+        var items = parser.ParseListing(payload, capturedAt);
+
+        items.Should().HaveCount(6);
+
+        items.Should().Contain(i => i.Title == "Ederson" && i.Category == "players");
+        items.Should().Contain(i => i.Title == "2x 86+ Upgrade" && i.Category == "upgrades" && i.RepeatableCount == 3);
+        items.Should().Contain(i => i.Title == "TOTS Challenge 2" && i.Category == "challenges" && i.RepeatableUnlimited);
+        items.Should().Contain(i => i.Title == "Marquee Matchups" && i.Category == "challenges");
+        items.Should().Contain(i => i.Title == "Premier League POTM March" && i.Category == "players");
+
+        // Legacy shape with embedded coin amount must still produce a clean title.
+        items.Should().Contain(i =>
+            i.Title == "Ederson" &&
+            i.DetailsUrl.EndsWith("26-830-ederson-legacy/", StringComparison.Ordinal));
+
+        items.Should().AllSatisfy(i =>
+        {
+            i.Title.Should().NotMatch(@".*\d{1,3}(,\d{3})+.*");
+            i.DetailsUrl.Should().StartWith("https://www.fut.gg/sbc/");
+        });
+    }
 }
 

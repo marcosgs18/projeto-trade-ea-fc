@@ -1,6 +1,8 @@
-# Fonte: FUTBIN (EA FC 26)
+# Fonte: FUTBIN (EA FC 26) — fallback
 
-Este documento descreve as superfícies públicas do **FUTBIN** utilizadas pelo adapter `IFutbinMarketClient` e como a coleta é estruturada para produzir snapshots normalizados.
+Este documento descreve as superfícies públicas do **FUTBIN** utilizadas pelo adapter `FutbinMarketClient` (implementação de `IPlayerMarketClient`) e como a coleta é estruturada para produzir snapshots normalizados.
+
+> **Status na V1**: `FutbinMarketClient` é **fallback**. A fonte padrão de market passou a ser **FUT.GG** (`Market:Source = "futgg"`) porque o endpoint JSON da FUT.GG retorna 200 sem Cloudflare. O FUTBIN só fica operacional atrás de um proxy WAF autorizado — ver "Cloudflare e estratégia de coleta" abaixo. Para trocar de fonte, ajuste `Market:Source` (detalhes em `docs/source-futgg-market.md`).
 
 ## Superfícies públicas identificadas
 
@@ -84,6 +86,10 @@ Toda coleta registra um **snapshot bruto** (via `IRawSnapshotStore`) com:
 - `PayloadHash` (SHA-256 do corpo)
 
 Esses dados garantem que, mesmo quando o FUTBIN muda markup ou layout, qualquer snapshot normalizado no histórico seja reproduzível a partir do payload original salvo.
+
+## Contrato compartilhado
+
+O `FutbinMarketClient` implementa `TradingIntel.Application.PlayerMarket.IPlayerMarketClient` — o mesmo contrato neutro usado pelo `FutGgMarketClient`. O Worker (`PriceCollectionJob`) resolve sempre `IPlayerMarketClient` e não tem conhecimento de fonte; a escolha vem da configuração (`Market:Source`). Isso permite trocar FUTBIN ↔ FUT.GG sem tocar no job.
 
 ## Resiliência do parser
 

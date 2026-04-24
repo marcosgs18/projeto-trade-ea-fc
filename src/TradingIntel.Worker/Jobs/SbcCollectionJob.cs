@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingIntel.Application.FutGg;
 using TradingIntel.Application.Persistence;
-using TradingIntel.Worker.Health;
+using TradingIntel.Application.JobHealth;
 
 namespace TradingIntel.Worker.Jobs;
 

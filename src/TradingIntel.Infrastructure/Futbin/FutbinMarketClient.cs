@@ -1,6 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
-using TradingIntel.Application.Futbin;
+using TradingIntel.Application.PlayerMarket;
 using TradingIntel.Application.Snapshots;
 using TradingIntel.Domain.Models;
 using TradingIntel.Domain.ValueObjects;
@@ -13,7 +13,7 @@ namespace TradingIntel.Infrastructure.Futbin;
 /// the client behind an authorized proxy or WAF solver; the adapter intentionally
 /// keeps parser and mapper decoupled from transport for testability.
 /// </summary>
-public sealed class FutbinMarketClient : IFutbinMarketClient
+public sealed class FutbinMarketClient : IPlayerMarketClient
 {
     private const string SourceName = "futbin";
     private const string FcYearPath = "26";
@@ -29,7 +29,7 @@ public sealed class FutbinMarketClient : IFutbinMarketClient
         _rawSnapshotStore = rawSnapshotStore;
     }
 
-    public async Task<FutbinPlayerMarketSnapshot> GetPlayerMarketSnapshotAsync(PlayerReference player, CancellationToken cancellationToken)
+    public async Task<PlayerMarketSnapshot> GetPlayerMarketSnapshotAsync(PlayerReference player, CancellationToken cancellationToken)
     {
         var capturedAtUtc = DateTime.UtcNow;
         var correlationId = Guid.NewGuid().ToString("N");
@@ -60,7 +60,7 @@ public sealed class FutbinMarketClient : IFutbinMarketClient
 
         if (parsed is null)
         {
-            return new FutbinPlayerMarketSnapshot(
+            return new PlayerMarketSnapshot(
                 SourceName,
                 capturedAtUtc,
                 correlationId,
@@ -73,7 +73,7 @@ public sealed class FutbinMarketClient : IFutbinMarketClient
         var prices = mapper.MapPriceSnapshots(parsed, player, capturedAtUtc);
         var listings = mapper.MapLowestListingSnapshots(parsed, player, capturedAtUtc);
 
-        return new FutbinPlayerMarketSnapshot(
+        return new PlayerMarketSnapshot(
             SourceName,
             capturedAtUtc,
             correlationId,
