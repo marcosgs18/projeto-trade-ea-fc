@@ -1,0 +1,118 @@
+@page "/opportunities"
+@using TradingIntel.Application.Persistence
+@inject ITradeOpportunityRepository Repo
+
+<PageTitle>TradingIntel · Oportunidades</PageTitle>
+<h1>Oportunidades</h1>
+<p class="muted">
+    Última materialização por jogador (upsert em <code>trade_opportunities</code>).
+    Recompute é disparado pelo Worker e por <code>POST /api/opportunities/recompute</code>.
+</p>
+
+<div class="form-row">
+    <label>
+        Margem líquida mínima
+        <input type="number" step="1" min="0" @bind="_minNetMargin" @bind:event="oninput" />
+    </label>
+    <label>
+        Confiança mínima (0–1)
+        <input type="number" step="0.05" min="0" max="1" @bind="_minConfidence" @bind:event="oninput" />
+    </label>
+    <label>
+        <span>&nbsp;</span>
+        <label style="flex-direction: row; align-items: center; gap: 6px;">
+            <input type="checkbox" @bind="_hideStale" />
+            <span>Ocultar stale</span>
+        </label>
+    </label>
+    <button class="primary" @onclick="ReloadAsync" disabled="@_loading">
+        @(_loading ? "Carregando…" : "Aplicar filtros")
+    </button>
+</div>
+
+@if (_loading)
+{
+    <p class="muted">Carregando…</p>
+}
+else if (_items.Count == 0)
+{
+    <p class="muted">Nenhuma oportunidade para os filtros atuais.</p>
+}
+else
+{
+    <table>
+        <thead>
+            <tr>
+                <th>Jogador</th>
+                <th>Compra esperada</th>
+                <th>Venda esperada</th>
+                <th>Margem líquida</th>
+                <th>Confiança</th>
+                <th>Detectada (UTC)</th>
+                <th>Estado</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var view in _items)
+            {
+                var opp = view.Opportunity;
+                <tr>
+                    <td>
+                        <div>@opp.Player.DisplayName</div>
+                        <div class="muted" style="font-size:0.78rem;">@opp.Player.PlayerId</div>
+                    </td>
+                    <td class="numeric">@opp.ExpectedBuyPrice.Value.ToString("N0")</td>
+                    <td class="numeric">@opp.ExpectedSellPrice.Value.ToString("N0")</td>
+                    <td class="numeric">@opp.ExpectedNetMargin.Value.ToString("N0")</td>
+                    <td class="numeric">@opp.Confidence.Value.ToString("P0")</td>
+                    <td>@FormatUtc(opp.DetectedAtUtc)</td>
+                    <td>
+                        @if (view.IsStale)
+                        {
+                            <span class="tag stale">stale</span>
+                        }
+                        else
+                        {
+                            <span class="tag ok">fresca</span>
+                        }
+                    </td>
+                    <td><a href="@($"opportunities/{opp.Id}")">detalhes</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <p class="muted" style="margin-top:.75rem;">Mostrando @_items.Count de @_totalCount oportunidades.</p>
+}
+
+@code {
+    private bool _loading = true;
+    private IReadOnlyList<TradeOpportunityStoredView> _items = Array.Empty<TradeOpportunityStoredView>();
+    private int _totalCount;
+    private decimal? _minNetMargin;
+    private decimal? _minConfidence;
+    private bool _hideStale;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var filter = new TradeOpportunityListFilter(
+            MinConfidence: _minConfidence,
+            MinNetMargin: _minNetMargin,
+            PlayerId: null,
+            DetectedAfterUtc: null);
+        var (items, total) = await Repo
+            .QueryPagedAsync(filter, skip: 0, take: 200, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        // Repository filter deliberately does not expose IsStale; apply it in
+        // memory so the dashboard can toggle it without growing the contract.
+        _items = _hideStale ? items.Where(i => !i.IsStale).ToList() : items;
+        _totalCount = total;
+        _loading = false;
+    }
+
+    private static string FormatUtc(DateTime utc) => utc.ToString("yyyy-MM-dd HH:mm");
+}

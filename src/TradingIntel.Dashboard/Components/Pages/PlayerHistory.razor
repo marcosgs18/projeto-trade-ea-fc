@@ -1,0 +1,115 @@
+@page "/players/{PlayerId:long}"
+@using TradingIntel.Application.Persistence
+@using TradingIntel.Domain.Models
+@inject IPlayerPriceSnapshotRepository PriceRepo
+@inject IWatchlistRepository Watchlist
+
+<PageTitle>TradingIntel · Histórico</PageTitle>
+<h1>Histórico de preços</h1>
+
+@if (_player is null)
+{
+    <p class="muted">Player ID @PlayerId não encontrado no <a href="../watchlist">watchlist</a>.</p>
+}
+else
+{
+    <p class="muted">
+        <strong>@_player.Player.DisplayName</strong>
+        · Player ID @_player.Player.PlayerId
+        @(_player.Overall is { } ovr ? $" · OVR {ovr}" : string.Empty)
+    </p>
+}
+
+<div class="form-row">
+    <label>
+        Janela
+        <select @bind="_windowHours">
+            <option value="3">Últimas 3 h</option>
+            <option value="24">Últimas 24 h</option>
+            <option value="72">Últimos 3 dias</option>
+            <option value="168">Últimos 7 dias</option>
+        </select>
+    </label>
+    <label>
+        Fonte (prefixo)
+        <input @bind="_sourcePrefix" placeholder="futgg" />
+    </label>
+    <button class="primary" @onclick="ReloadAsync" disabled="@_loading">
+        @(_loading ? "Carregando…" : "Recarregar")
+    </button>
+</div>
+
+@if (_loading)
+{
+    <p class="muted">Carregando…</p>
+}
+else if (_items.Count == 0)
+{
+    <p class="muted">Nenhum snapshot na janela selecionada.</p>
+}
+else
+{
+    <table>
+        <thead>
+            <tr>
+                <th>Capturado (UTC)</th>
+                <th>Fonte</th>
+                <th>Buy now</th>
+                <th>Sell now</th>
+                <th>Mediana</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var snap in _items)
+            {
+                <tr>
+                    <td>@snap.CapturedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td><code>@snap.Source</code></td>
+                    <td class="numeric">@snap.BuyNowPrice.Value.ToString("N0")</td>
+                    <td class="numeric">@(snap.SellNowPrice is { } s ? s.Value.ToString("N0") : "—")</td>
+                    <td class="numeric">@snap.MedianMarketPrice.Value.ToString("N0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <p class="muted" style="margin-top:.75rem;">Mostrando @_items.Count de @_totalCount snapshots na janela.</p>
+}
+
+<p style="margin-top:1rem;"><a href="../watchlist">← Voltar para Watchlist</a></p>
+
+@code {
+    [Parameter] public long PlayerId { get; set; }
+
+    private bool _loading = true;
+    private IReadOnlyList<PlayerPriceSnapshot> _items = Array.Empty<PlayerPriceSnapshot>();
+    private int _totalCount;
+    private TrackedPlayer? _player;
+    private int _windowHours = 24;
+    private string _sourcePrefix = string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _player = await Watchlist.GetByPlayerIdAsync(PlayerId, CancellationToken.None).ConfigureAwait(false);
+        await ReloadAsync().ConfigureAwait(false);
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var to = DateTime.UtcNow;
+        var from = to.AddHours(-Math.Max(1, _windowHours));
+        // GetByPlayerPagedAsync takes an exact Source match; pass null when the
+        // user leaves the input empty so all sources (e.g. futgg:pc + futgg:console)
+        // are visible.
+        string? source = string.IsNullOrWhiteSpace(_sourcePrefix) ? null : _sourcePrefix.Trim();
+        // The repository sorts ascending and we want the most recent snapshots
+        // at the top; ask for a generous cap (7d * 1-tick/5min ≈ 2016 rows) and
+        // reverse in-memory. Larger windows will just truncate oldest rows.
+        var (items, total) = await PriceRepo
+            .GetByPlayerPagedAsync(PlayerId, source, from, to, skip: 0, take: 5000, CancellationToken.None)
+            .ConfigureAwait(false);
+        _items = items.Reverse().ToList();
+        _totalCount = total;
+        _loading = false;
+    }
+}

@@ -1,0 +1,86 @@
+@page "/"
+@using TradingIntel.Application.Persistence
+@inject IWatchlistRepository Watchlist
+@inject ITradeOpportunityRepository Opportunities
+
+<PageTitle>TradingIntel · Home</PageTitle>
+<h1>Visão geral</h1>
+
+@if (_loading)
+{
+    <p class="muted">Carregando…</p>
+}
+else
+{
+    <div class="cards">
+        <div class="card">
+            <div class="label">Watchlist ativa</div>
+            <div class="value numeric">@_activeWatchlist</div>
+            <div class="hint">jogadores rastreados</div>
+        </div>
+        <div class="card">
+            <div class="label">Oportunidades (total)</div>
+            <div class="value numeric">@_totalOpportunities</div>
+            <div class="hint">@_profitableOpportunities com margem líquida &gt; 0</div>
+        </div>
+        <div class="card">
+            <div class="label">Última oportunidade</div>
+            <div class="value">@(_lastOpportunityAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</div>
+            <div class="hint">@_lastOpportunityHint</div>
+        </div>
+    </div>
+
+    <h2>Próximos passos</h2>
+    <ul>
+        <li><a href="watchlist">Gerenciar a watchlist</a> — adicionar/remover jogadores monitorados.</li>
+        <li><a href="opportunities">Ver oportunidades</a> — filtrar por margem e stale.</li>
+    </ul>
+}
+
+@code {
+    private bool _loading = true;
+    private int _activeWatchlist;
+    private int _totalOpportunities;
+    private int _profitableOpportunities;
+    private DateTime? _lastOpportunityAt;
+    private string _lastOpportunityHint = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Three lightweight COUNT/TAKE(1) queries — enough for a landing card
+        // and cheap enough for every navigation. Heavier aggregates belong
+        // to the dedicated pages.
+        var watchlistQuery = new WatchlistQuery(IncludeInactive: false, Source: null, MinOverall: null);
+        var (_, activeCount) = await Watchlist
+            .QueryPagedAsync(watchlistQuery, skip: 0, take: 1, CancellationToken.None)
+            .ConfigureAwait(false);
+        _activeWatchlist = activeCount;
+
+        var (latestItems, totalOpps) = await Opportunities
+            .QueryPagedAsync(new TradeOpportunityListFilter(null, null, null, null), skip: 0, take: 1, CancellationToken.None)
+            .ConfigureAwait(false);
+        _totalOpportunities = totalOpps;
+
+        var (_, profitable) = await Opportunities
+            .QueryPagedAsync(new TradeOpportunityListFilter(null, MinNetMargin: 1m, null, null), skip: 0, take: 1, CancellationToken.None)
+            .ConfigureAwait(false);
+        _profitableOpportunities = profitable;
+
+        if (latestItems.Count > 0)
+        {
+            _lastOpportunityAt = latestItems[0].Opportunity.DetectedAtUtc;
+            var elapsed = DateTime.UtcNow - _lastOpportunityAt.Value;
+            _lastOpportunityHint = elapsed.TotalMinutes < 1
+                ? "há menos de 1 minuto"
+                : elapsed.TotalHours < 1
+                    ? $"há {(int)elapsed.TotalMinutes} min"
+                    : $"há {elapsed.TotalHours:F1} h";
+        }
+        else
+        {
+            _lastOpportunityHint = "nenhuma oportunidade registrada ainda";
+        }
+
+        _loading = false;
+    }
+}

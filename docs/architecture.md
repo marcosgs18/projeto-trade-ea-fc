@@ -11,8 +11,11 @@
 3. **TradingIntel.Infrastructure**  
    Adapters: implementações das interfaces da Application, acesso a rede, banco, armazenamento de snapshots brutos, etc. Referencia Domain e Application.
 
-4. **Hosts (Api, Worker, Dashboard)**  
+4. **Hosts (Api, Worker, Dashboard)**
    Composição raiz (`Program.cs`), configuração, middleware e endpoints HTTP mínimos. Orquestram chamadas à Application; não contêm regras de negócio.
+   - `TradingIntel.Api` expõe os contratos HTTP (REST + Swagger em Development).
+   - `TradingIntel.Worker` roda os jobs periódicos (coleta de preços, SBCs, recompute de oportunidades).
+   - `TradingIntel.Dashboard` é a UI de operação (Blazor Server) — consome os mesmos repositórios de Application/Infrastructure e compartilha o SQLite. Ver [`dashboard.md`](dashboard.md).
 
 ## Políticas
 

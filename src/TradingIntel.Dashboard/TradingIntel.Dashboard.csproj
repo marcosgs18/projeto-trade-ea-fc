@@ -7,4 +7,14 @@
     <ProjectReference Include="..\TradingIntel.Application\TradingIntel.Application.csproj" />
     <ProjectReference Include="..\TradingIntel.Infrastructure\TradingIntel.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!--
+      Watchlist seeding on host startup relies on data/players-catalog.seed.json
+      being reachable via AppContext.BaseDirectory. Copy it from the repo root so
+      the Dashboard behaves like the Api/Worker when hosting the seed service.
+    -->
+    <Content Include="..\..\data\players-catalog.seed.json" Link="data\players-catalog.seed.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

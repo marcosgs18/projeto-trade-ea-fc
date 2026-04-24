@@ -32,7 +32,7 @@ Rodar a suíte de testes para confirmar que o ambiente está saudável:
 dotnet test TradingIntel.sln --no-build
 ```
 
-Esperado: `Aprovado: 133, Com falha: 0`.
+Esperado: `Aprovado: 137, Com falha: 0`.
 
 ## 3. Configurar a watchlist (jogadores que você quer monitorar)
 
@@ -182,6 +182,27 @@ Resposta esperada (resumo):
   "totalPages": 1
 }
 ```
+
+## 5b. Subir o Dashboard (tela web opcional)
+
+Se preferir navegar os dados em uma tela em vez de usar `curl` e o Swagger,
+suba o Dashboard em um terceiro terminal:
+
+```powershell
+$env:DOTNET_ENVIRONMENT="Development"
+dotnet run --project src/TradingIntel.Dashboard
+```
+
+Abra <http://localhost:5290>. Você terá:
+
+- `/` — cards com contagens da watchlist, oportunidades e última detecção.
+- `/watchlist` — tabela, formulário de adicionar/reativar, botão desativar.
+- `/opportunities` — tabela filtrável por margem líquida, confiança e stale.
+- `/opportunities/{id}` — detalhe com `Reasons` e `Suggestions`.
+- `/players/{playerId}` — histórico de preços do jogador (janela 3 h a 7 d).
+
+O Dashboard compartilha o mesmo `tradingintel.db` da Api e do Worker — pode
+ser usado em paralelo aos outros hosts. Detalhes em [`docs/dashboard.md`](dashboard.md).
 
 Para o detalhe (com **razões** legíveis e **sugestões de execução**):
 
