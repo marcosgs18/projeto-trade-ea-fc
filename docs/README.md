@@ -14,6 +14,7 @@
 - [Worker de coleta](worker.md) — jobs periódicos (SBCs, preços e recompute de oportunidades), agendamento, backoff, health interno e configuração.
 - [API HTTP](api.md) — endpoints REST, OpenAPI/Swagger (Development), paginação e testes de integração.
 - [Watchlist](watchlist.md) — tabela `tracked_players`, seed JSON versionado, endpoints `/api/watchlist` e plano de deprecação de `Jobs:*:Players`.
+- [Dashboard](dashboard.md) — tela web (Blazor Server) para navegar watchlist, oportunidades e histórico de preços.
 
 ## Integração contínua
 

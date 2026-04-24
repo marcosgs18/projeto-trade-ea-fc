@@ -1,0 +1,224 @@
+@page "/watchlist"
+@using TradingIntel.Application.Persistence
+@using TradingIntel.Domain.Models
+@using TradingIntel.Domain.ValueObjects
+@inject IWatchlistRepository Repo
+
+<PageTitle>TradingIntel · Watchlist</PageTitle>
+<h1>Watchlist</h1>
+<p class="muted">
+    Jogadores rastreados pelo job de coleta de preços e pelo recompute de oportunidades.
+    Entradas adicionadas aqui são gravadas com <span class="tag source-api">Api</span>
+    e o seed de boot nunca as sobrescreve.
+</p>
+
+@if (_banner is not null)
+{
+    <div class="banner @(_bannerIsError ? "error" : "success")">@_banner</div>
+}
+
+<h2>Adicionar ou reativar</h2>
+<EditForm Model="_form" OnValidSubmit="SubmitAsync" FormName="addTracked">
+    <DataAnnotationsValidator />
+    <div class="form-row">
+        <label>
+            Player ID
+            <InputNumber @bind-Value="_form.PlayerId" />
+        </label>
+        <label>
+            Nome
+            <InputText @bind-Value="_form.DisplayName" />
+        </label>
+        <label>
+            Overall (opcional)
+            <InputNumber @bind-Value="_form.Overall" />
+        </label>
+        <button type="submit" class="primary" disabled="@_submitting">
+            @(_submitting ? "Salvando…" : "Adicionar")
+        </button>
+    </div>
+    <ValidationSummary />
+</EditForm>
+
+<h2>Entradas ativas (@_totalActive)</h2>
+@if (_loading)
+{
+    <p class="muted">Carregando…</p>
+}
+else if (_items.Count == 0)
+{
+    <p class="muted">Nenhum jogador ativo. Adicione pelo formulário acima
+    ou pelo <a href="https://github.com/marcosgs18/projeto-trade-ea-fc/blob/main/data/players-catalog.seed.json" target="_blank" rel="noreferrer">seed JSON</a>.</p>
+}
+else
+{
+    <table>
+        <thead>
+            <tr>
+                <th>Player ID</th>
+                <th>Nome</th>
+                <th>OVR</th>
+                <th>Origem</th>
+                <th>Adicionado (UTC)</th>
+                <th>Última coleta (UTC)</th>
+                <th>Preços</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var player in _items)
+            {
+                <tr>
+                    <td class="numeric">@player.Player.PlayerId</td>
+                    <td>@player.Player.DisplayName</td>
+                    <td class="numeric">@(player.Overall?.ToString() ?? "—")</td>
+                    <td><span class="tag @SourceCssClass(player.Source)">@player.Source</span></td>
+                    <td>@FormatUtc(player.AddedAtUtc)</td>
+                    <td>@(player.LastCollectedAtUtc is { } ts ? FormatUtc(ts) : "—")</td>
+                    <td><a href="@($"players/{player.Player.PlayerId}")">histórico</a></td>
+                    <td>
+                        <button class="danger"
+                                @onclick="() => DeactivateAsync(player.Player.PlayerId)"
+                                disabled="@_submitting">
+                            Desativar
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _submitting;
+    private int _totalActive;
+    private IReadOnlyList<TrackedPlayer> _items = Array.Empty<TrackedPlayer>();
+    private string? _banner;
+    private bool _bannerIsError;
+    private readonly AddTrackedPlayerForm _form = new();
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        var query = new WatchlistQuery(IncludeInactive: false, Source: null, MinOverall: null);
+        var (items, total) = await Repo
+            .QueryPagedAsync(query, skip: 0, take: 200, CancellationToken.None)
+            .ConfigureAwait(false);
+        _items = items;
+        _totalActive = total;
+        _loading = false;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_form.PlayerId <= 0 || string.IsNullOrWhiteSpace(_form.DisplayName))
+        {
+            SetBanner("Player ID e nome são obrigatórios.", isError: true);
+            return;
+        }
+
+        _submitting = true;
+        try
+        {
+            // Mirror the POST /api/watchlist contract: we always upsert with
+            // IsActive = true, and preserve the existing Source/AddedAtUtc when
+            // the row already exists so reactivations don't rewrite history.
+            var existing = await Repo
+                .GetByPlayerIdAsync(_form.PlayerId, CancellationToken.None)
+                .ConfigureAwait(false);
+
+            TrackedPlayer toUpsert;
+            if (existing is null)
+            {
+                toUpsert = new TrackedPlayer(
+                    new PlayerReference(_form.PlayerId, _form.DisplayName.Trim()),
+                    _form.Overall,
+                    WatchlistSource.Api,
+                    DateTime.UtcNow,
+                    lastCollectedAtUtc: null,
+                    isActive: true);
+            }
+            else
+            {
+                toUpsert = new TrackedPlayer(
+                    new PlayerReference(_form.PlayerId, _form.DisplayName.Trim()),
+                    _form.Overall ?? existing.Overall,
+                    existing.Source,
+                    existing.AddedAtUtc,
+                    existing.LastCollectedAtUtc,
+                    isActive: true);
+            }
+
+            await Repo.UpsertAsync(toUpsert, CancellationToken.None).ConfigureAwait(false);
+            SetBanner(existing is null
+                ? $"Jogador {_form.DisplayName} adicionado."
+                : $"Jogador {_form.DisplayName} reativado/atualizado.",
+                isError: false);
+
+            _form.Reset();
+            await ReloadAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            SetBanner($"Falha ao salvar: {ex.Message}", isError: true);
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private async Task DeactivateAsync(long playerId)
+    {
+        _submitting = true;
+        try
+        {
+            var ok = await Repo.DeactivateAsync(playerId, CancellationToken.None).ConfigureAwait(false);
+            SetBanner(
+                ok ? $"Jogador {playerId} desativado." : $"Nenhuma entrada encontrada para {playerId}.",
+                isError: !ok);
+            await ReloadAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            SetBanner($"Falha ao desativar: {ex.Message}", isError: true);
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void SetBanner(string message, bool isError)
+    {
+        _banner = message;
+        _bannerIsError = isError;
+    }
+
+    private static string FormatUtc(DateTime utc) => utc.ToString("yyyy-MM-dd HH:mm");
+
+    private static string SourceCssClass(WatchlistSource source) => source switch
+    {
+        WatchlistSource.Seed => "source-seed",
+        WatchlistSource.Api => "source-api",
+        WatchlistSource.AppSettings => "source-appsettings",
+        _ => "",
+    };
+
+    private sealed class AddTrackedPlayerForm
+    {
+        public long PlayerId { get; set; }
+        public string DisplayName { get; set; } = string.Empty;
+        public int? Overall { get; set; }
+
+        public void Reset()
+        {
+            PlayerId = 0;
+            DisplayName = string.Empty;
+            Overall = null;
+        }
+    }
+}

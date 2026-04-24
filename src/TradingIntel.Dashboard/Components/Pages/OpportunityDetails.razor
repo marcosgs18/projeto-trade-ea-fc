@@ -1,0 +1,122 @@
+@page "/opportunities/{Id:guid}"
+@using TradingIntel.Application.Persistence
+@using TradingIntel.Domain.Models
+@inject ITradeOpportunityRepository Repo
+
+<PageTitle>TradingIntel · Oportunidade</PageTitle>
+<h1>Oportunidade</h1>
+
+@if (_loading)
+{
+    <p class="muted">Carregando…</p>
+}
+else if (_view is null)
+{
+    <p class="muted">Oportunidade não encontrada. <a href="opportunities">Voltar</a>.</p>
+}
+else
+{
+    var opp = _view.Opportunity;
+    <div class="cards">
+        <div class="card">
+            <div class="label">Jogador</div>
+            <div class="value">@opp.Player.DisplayName</div>
+            <div class="hint">ID @opp.Player.PlayerId · <a href="@($"../players/{opp.Player.PlayerId}")">histórico</a></div>
+        </div>
+        <div class="card">
+            <div class="label">Compra · Venda</div>
+            <div class="value numeric">@opp.ExpectedBuyPrice.Value.ToString("N0") → @opp.ExpectedSellPrice.Value.ToString("N0")</div>
+            <div class="hint">margem líquida @opp.ExpectedNetMargin.Value.ToString("N0") coins (após taxa de 5%)</div>
+        </div>
+        <div class="card">
+            <div class="label">Confiança</div>
+            <div class="value numeric">@opp.Confidence.Value.ToString("P0")</div>
+            <div class="hint">@(_view.IsStale ? "stale — aguardando recompute" : "fresca")</div>
+        </div>
+        <div class="card">
+            <div class="label">Detectada</div>
+            <div class="value">@opp.DetectedAtUtc.ToString("yyyy-MM-dd HH:mm")</div>
+            <div class="hint">último recompute @_view.LastRecomputedAtUtc.ToString("yyyy-MM-dd HH:mm") UTC</div>
+        </div>
+    </div>
+
+    <h2>Reasons</h2>
+    @if (opp.Reasons.Count == 0)
+    {
+        <p class="muted">Sem reasons registradas.</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Mensagem</th>
+                    <th>Peso</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var reason in opp.Reasons)
+                {
+                    <tr>
+                        <td><code>@reason.Code</code></td>
+                        <td>@reason.Message</td>
+                        <td class="numeric">@reason.Weight.ToString("F2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <h2>Sugestões de execução</h2>
+    @if (opp.Suggestions.Count == 0)
+    {
+        <p class="muted">Sem sugestões registradas.</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Ação</th>
+                    <th>Preço alvo</th>
+                    <th>Válida até (UTC)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in opp.Suggestions)
+                {
+                    <tr>
+                        <td>@ActionLabel(s.Action)</td>
+                        <td class="numeric">@s.TargetPrice.Value.ToString("N0")</td>
+                        <td>@s.ValidUntilUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <p style="margin-top:1rem;"><a href="opportunities">← Voltar</a></p>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private TradeOpportunityStoredView? _view;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _view = await Repo.GetByOpportunityIdAsync(Id, CancellationToken.None).ConfigureAwait(false);
+        _loading = false;
+    }
+
+    private static string ActionLabel(ExecutionAction action) => action switch
+    {
+        ExecutionAction.Buy => "Comprar",
+        ExecutionAction.ListForSale => "Listar para venda",
+        ExecutionAction.Hold => "Manter",
+        _ => action.ToString(),
+    };
+}

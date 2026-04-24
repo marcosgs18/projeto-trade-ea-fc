@@ -1,0 +1,19 @@
+@* Root document served by MapRazorComponents<App>(). The interactive render mode
+   is attached to <Routes> so every routed page becomes a Blazor Server circuit;
+   see Routes.razor for the actual router. *@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link rel="stylesheet" href="app.css" />
+    <title>TradingIntel Dashboard</title>
+    <HeadOutlet />
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>
