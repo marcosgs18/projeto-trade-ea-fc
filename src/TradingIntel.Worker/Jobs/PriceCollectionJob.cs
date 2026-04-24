@@ -1,10 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TradingIntel.Application.PlayerMarket;
-using TradingIntel.Application.Persistence;
-using TradingIntel.Domain.ValueObjects;
 using TradingIntel.Application.JobHealth;
+using TradingIntel.Application.Persistence;
+using TradingIntel.Application.PlayerMarket;
+using TradingIntel.Domain.Models;
+using TradingIntel.Domain.ValueObjects;
 
 namespace TradingIntel.Worker.Jobs;
 
@@ -37,10 +38,15 @@ public sealed class PriceCollectionJob : ScheduledJob
         IServiceProvider serviceProvider,
         CancellationToken cancellationToken)
     {
-        var players = _options.Players;
-        if (players is null || players.Count == 0)
+        var watchlist = serviceProvider.GetRequiredService<IWatchlistRepository>();
+        var players = await watchlist.GetActiveAsync(cancellationToken).ConfigureAwait(false);
+
+        if (players.Count == 0)
         {
-            Logger.LogWarning("{Job} has no players configured; nothing to collect.", Name);
+            Logger.LogWarning(
+                "{Job} watchlist is empty (tracked_players has no active rows). " +
+                "Add entries through POST /api/watchlist or the data/players-catalog.seed.json file.",
+                Name);
             return;
         }
 
@@ -52,24 +58,13 @@ public sealed class PriceCollectionJob : ScheduledJob
         int totalPriceSnapshots = 0;
         int totalListingSnapshots = 0;
         int perPlayerFailures = 0;
+        var collectedIds = new List<long>(players.Count);
 
         foreach (var entry in players)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (entry.PlayerId <= 0)
-            {
-                Logger.LogWarning(
-                    "{Job} skipping invalid watchlist entry. playerId={PlayerId}",
-                    Name,
-                    entry.PlayerId);
-                continue;
-            }
-
-            var displayName = string.IsNullOrWhiteSpace(entry.Name)
-                ? $"player-{entry.PlayerId}"
-                : entry.Name!;
-            var playerRef = new PlayerReference(entry.PlayerId, displayName);
+            var playerRef = entry.Player;
 
             try
             {
@@ -94,6 +89,7 @@ public sealed class PriceCollectionJob : ScheduledJob
                 collectedPlayers++;
                 totalPriceSnapshots += snapshot.PriceSnapshots.Count;
                 totalListingSnapshots += snapshot.LowestListingSnapshots.Count;
+                collectedIds.Add(playerRef.PlayerId);
 
                 Logger.LogDebug(
                     "{Job} collected player {PlayerId} ({PlayerName}). prices={PriceCount} listings={ListingCount} correlationId={CorrelationId}",
@@ -118,6 +114,13 @@ public sealed class PriceCollectionJob : ScheduledJob
                     playerRef.PlayerId,
                     playerRef.DisplayName);
             }
+        }
+
+        if (collectedIds.Count > 0)
+        {
+            await watchlist
+                .TouchLastCollectedAsync(collectedIds, DateTime.UtcNow, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         Logger.LogInformation(

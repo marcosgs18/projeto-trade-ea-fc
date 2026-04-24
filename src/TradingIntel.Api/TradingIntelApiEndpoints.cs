@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 using TradingIntel.Api.Contracts;
 using TradingIntel.Api.Mapping;
 using TradingIntel.Application.JobHealth;
 using TradingIntel.Application.Persistence;
 using TradingIntel.Application.Trading;
+using TradingIntel.Domain.Models;
+using TradingIntel.Domain.ValueObjects;
 
 namespace TradingIntel.Api;
 
@@ -245,41 +246,201 @@ public static class TradingIntelApiEndpoints
             async (
                 [FromBody] OpportunityRecomputeHttpRequest? body,
                 [FromServices] IOpportunityRecomputeService recompute,
-                [FromServices] IOptionsSnapshot<OpportunityRecomputePlayersSource> playersConfig,
+                [FromServices] IWatchlistRepository watchlist,
                 CancellationToken cancellationToken) =>
             {
-                var rows = playersConfig.Value.Players ?? Array.Empty<OpportunityRecomputeWatchlistRow>();
-                if (rows.Count == 0)
+                var active = await watchlist.GetActiveAsync(cancellationToken).ConfigureAwait(false);
+                if (active.Count == 0)
                 {
                     return Results.Problem(
-                        detail: "No players configured under Jobs:OpportunityRecompute:Players.",
+                        detail: "Watchlist is empty (tracked_players has no active rows). " +
+                                "Add entries via POST /api/watchlist or seed them in data/players-catalog.seed.json.",
                         statusCode: StatusCodes.Status400BadRequest);
                 }
 
-                IEnumerable<OpportunityRecomputeWatchlistRow> chosen =
-                    body?.PlayerIds is { Length: > 0 } ids
-                        ? rows.Where(r => ids.Contains(r.PlayerId))
-                        : rows;
+                IEnumerable<TrackedPlayer> chosen = body?.PlayerIds is { Length: > 0 } ids
+                    ? active.Where(p => ids.Contains(p.Player.PlayerId))
+                    : active;
 
                 var batch = chosen
-                    .Select(r =>
-                    {
-                        var name = string.IsNullOrWhiteSpace(r.Name)
-                            ? $"player-{r.PlayerId}"
-                            : r.Name.Trim();
-                        return new OpportunityRecomputePlayer(r.PlayerId, name, r.Overall);
-                    })
+                    .Select(p => new OpportunityRecomputePlayer(p.Player.PlayerId, p.Player.DisplayName, p.Overall))
                     .ToList();
 
                 if (batch.Count == 0)
                 {
                     return Results.Problem(
-                        detail: "No matching players for the given filter.",
+                        detail: "No matching players in the watchlist for the given filter.",
                         statusCode: StatusCodes.Status400BadRequest);
                 }
 
                 var summary = await recompute.RecomputeAsync(batch, cancellationToken).ConfigureAwait(false);
                 return Results.Ok(OpportunityMapper.ToResponse(summary));
+            });
+
+        MapWatchlist(api);
+    }
+
+    private static void MapWatchlist(RouteGroupBuilder api)
+    {
+        api.MapGet(
+            "/watchlist",
+            async (
+                [FromServices] IWatchlistRepository repo,
+                [FromQuery] bool? includeInactive,
+                [FromQuery] string? source,
+                [FromQuery] int? minOverall,
+                [FromQuery] int? page,
+                [FromQuery] int? pageSize,
+                CancellationToken cancellationToken) =>
+            {
+                if (minOverall is < 0 or > 99)
+                {
+                    return Results.Problem(
+                        detail: "minOverall must be between 0 and 99.",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                WatchlistSource? parsedSource = null;
+                if (!string.IsNullOrWhiteSpace(source))
+                {
+                    if (!Enum.TryParse<WatchlistSource>(source, ignoreCase: true, out var parsed))
+                    {
+                        return Results.Problem(
+                            detail: $"source must be one of: {string.Join(", ", Enum.GetNames<WatchlistSource>())}.",
+                            statusCode: StatusCodes.Status400BadRequest);
+                    }
+
+                    parsedSource = parsed;
+                }
+
+                var (p, ps, skip) = Pagination.Normalize(page, pageSize);
+                var query = new WatchlistQuery(includeInactive ?? false, parsedSource, minOverall);
+                var (items, total) = await repo
+                    .QueryPagedAsync(query, skip, ps, cancellationToken)
+                    .ConfigureAwait(false);
+
+                var dto = items.Select(WatchlistMapper.ToResponse).ToList();
+                return Results.Ok(
+                    new PagedResponse<TrackedPlayerResponse>(
+                        dto,
+                        p,
+                        ps,
+                        total,
+                        Pagination.TotalPages(total, ps)));
+            });
+
+        api.MapGet(
+            "/watchlist/{playerId:long}",
+            async (
+                [FromServices] IWatchlistRepository repo,
+                long playerId,
+                CancellationToken cancellationToken) =>
+            {
+                if (playerId <= 0)
+                {
+                    return Results.Problem(
+                        detail: "playerId must be greater than zero.",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var player = await repo.GetByPlayerIdAsync(playerId, cancellationToken).ConfigureAwait(false);
+                if (player is null)
+                {
+                    return Results.Problem(
+                        detail: $"No watchlist entry for playerId={playerId}.",
+                        statusCode: StatusCodes.Status404NotFound);
+                }
+
+                return Results.Ok(WatchlistMapper.ToResponse(player));
+            });
+
+        api.MapPost(
+            "/watchlist",
+            async (
+                [FromBody] CreateTrackedPlayerRequest? body,
+                [FromServices] IWatchlistRepository repo,
+                CancellationToken cancellationToken) =>
+            {
+                if (body is null)
+                {
+                    return Results.Problem(
+                        detail: "Request body is required.",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                if (body.PlayerId <= 0)
+                {
+                    return Results.Problem(
+                        detail: "playerId must be greater than zero.",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                if (string.IsNullOrWhiteSpace(body.DisplayName))
+                {
+                    return Results.Problem(
+                        detail: "displayName is required.",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                if (body.Overall is < 0 or > 99)
+                {
+                    return Results.Problem(
+                        detail: "overall must be between 0 and 99 when provided.",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var existing = await repo.GetByPlayerIdAsync(body.PlayerId, cancellationToken).ConfigureAwait(false);
+                TrackedPlayer toUpsert;
+
+                if (existing is null)
+                {
+                    toUpsert = new TrackedPlayer(
+                        new PlayerReference(body.PlayerId, body.DisplayName.Trim()),
+                        body.Overall,
+                        WatchlistSource.Api,
+                        DateTime.UtcNow,
+                        null,
+                        isActive: true);
+                }
+                else
+                {
+                    toUpsert = new TrackedPlayer(
+                        new PlayerReference(body.PlayerId, body.DisplayName.Trim()),
+                        body.Overall ?? existing.Overall,
+                        existing.Source,
+                        existing.AddedAtUtc,
+                        existing.LastCollectedAtUtc,
+                        isActive: true);
+                }
+
+                var saved = await repo.UpsertAsync(toUpsert, cancellationToken).ConfigureAwait(false);
+                var response = WatchlistMapper.ToResponse(saved);
+
+                return existing is null
+                    ? Results.Created($"/api/watchlist/{saved.Player.PlayerId}", response)
+                    : Results.Ok(response);
+            });
+
+        api.MapDelete(
+            "/watchlist/{playerId:long}",
+            async (
+                [FromServices] IWatchlistRepository repo,
+                long playerId,
+                CancellationToken cancellationToken) =>
+            {
+                if (playerId <= 0)
+                {
+                    return Results.Problem(
+                        detail: "playerId must be greater than zero.",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var ok = await repo.DeactivateAsync(playerId, cancellationToken).ConfigureAwait(false);
+                return ok
+                    ? Results.NoContent()
+                    : Results.Problem(
+                        detail: $"No watchlist entry for playerId={playerId}.",
+                        statusCode: StatusCodes.Status404NotFound);
             });
     }
 }

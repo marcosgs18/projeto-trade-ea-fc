@@ -38,12 +38,18 @@ Os DTOs de resposta vivem em `src/TradingIntel.Api/Contracts/` e os mapeamentos 
 | GET | `/api/market/listings` | `playerId` **obrigatório**; `from` / `to` (UTC); paginação. |
 | GET | `/api/opportunities` | Filtros: `minConfidence`, `minNetMargin`, `playerId`, `detectedAfter` (UTC); paginação. |
 | GET | `/api/opportunities/{id}` | Detalhe por `OpportunityId` (GUID) com `reasons` e `suggestions`. |
-| POST | `/api/opportunities/recompute` | Corpo opcional `{ "playerIds": [ ... ] }` para filtrar a watchlist em `Jobs:OpportunityRecompute:Players`. **Síncrono** (200 + resumo); sem fila dedicada na V1. |
+| POST | `/api/opportunities/recompute` | Corpo opcional `{ "playerIds": [ ... ] }`. Sem corpo ou com array vazio, recomputa todos os `tracked_players` ativos. **Síncrono** (200 + resumo). |
+| GET | `/api/watchlist` | Lista paginada dos `tracked_players`. Filtros: `includeInactive` (default `false`), `source` (`Seed`/`AppSettings`/`Api`), `minOverall`. |
+| GET | `/api/watchlist/{playerId:long}` | Detalhe de um jogador por `PlayerId` (eaId). Retorna inativos também. |
+| POST | `/api/watchlist` | Adiciona/atualiza. Body `{ "playerId", "displayName?", "overall?" }`. Fonte marcada como `Api`; nunca é sobrescrita pelo seed. |
+| DELETE | `/api/watchlist/{playerId:long}` | Soft-delete (`IsActive = false`). Preserva a linha para reativação futura. |
 
 ## Configuração
 
 - `ConnectionStrings:TradingIntel` — SQLite (ou outro provider configurado na Infrastructure).
-- `Jobs:OpportunityRecompute` — `Players` (watchlist com `PlayerId`, `Name`, `Overall`) e `StaleAfter` usados pelo recompute e pelo endpoint POST.
+- `Jobs:OpportunityRecompute:StaleAfter` — TTL usado pelo recompute para marcar oportunidades como obsoletas.
+- `Watchlist:CatalogSeedPath` — caminho do JSON de seed (default `data/players-catalog.seed.json`); ver [`docs/watchlist.md`](watchlist.md).
+- `Jobs:PriceCollection:Players` e `Jobs:OpportunityRecompute:Players` — **deprecated**. Lidos apenas no boot para importar idempotentemente na tabela `tracked_players`. Use a API (`POST /api/watchlist`) ou o seed JSON daqui pra frente.
 
 ## Testes de integração
 

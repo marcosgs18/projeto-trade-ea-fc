@@ -1,6 +1,7 @@
 using TradingIntel.Application;
 using TradingIntel.Infrastructure;
 using TradingIntel.Infrastructure.Persistence;
+using TradingIntel.Infrastructure.Watchlist;
 using TradingIntel.Worker;
 
 var host = Host.CreateDefaultBuilder(args)
@@ -13,5 +14,8 @@ var host = Host.CreateDefaultBuilder(args)
     .Build();
 
 host.Services.MigrateTradingIntelDatabase();
+await host.Services
+    .SeedWatchlistAsync(host.Services.GetRequiredService<IConfiguration>())
+    .ConfigureAwait(false);
 
-host.Run();
+await host.RunAsync().ConfigureAwait(false);

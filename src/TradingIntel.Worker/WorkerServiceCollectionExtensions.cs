@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TradingIntel.Application.Trading;
+using TradingIntel.Application.Watchlist;
 using TradingIntel.Worker.Jobs;
 
 namespace TradingIntel.Worker;
@@ -29,6 +30,10 @@ public static class WorkerServiceCollectionExtensions
         services
             .AddOptions<OpportunityRecomputeOptions>()
             .Bind(configuration.GetSection("Jobs:OpportunityRecompute"));
+
+        services
+            .AddOptions<WatchlistSeedOptions>()
+            .Bind(configuration.GetSection(WatchlistSeedOptions.SectionName));
 
         services.AddHostedService<SbcCollectionJob>();
         services.AddHostedService<PriceCollectionJob>();

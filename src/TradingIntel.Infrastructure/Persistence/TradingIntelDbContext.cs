@@ -22,6 +22,8 @@ public sealed class TradingIntelDbContext : DbContext
 
     internal DbSet<TradeOpportunityRecord> TradeOpportunities => Set<TradeOpportunityRecord>();
 
+    internal DbSet<TrackedPlayerRecord> TrackedPlayers => Set<TrackedPlayerRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<RawSnapshotRecord>(entity =>
@@ -103,6 +105,17 @@ public sealed class TradingIntelDbContext : DbContext
             entity.HasIndex(e => e.LastRecomputedAtUtc).HasDatabaseName("ix_trade_opportunities_last_recomputed");
             entity.HasIndex(e => e.IsStale).HasDatabaseName("ix_trade_opportunities_is_stale");
             entity.HasIndex(e => e.OpportunityId).HasDatabaseName("ix_trade_opportunities_opportunity_id");
+        });
+
+        modelBuilder.Entity<TrackedPlayerRecord>(entity =>
+        {
+            entity.ToTable("tracked_players");
+            entity.HasKey(e => e.PlayerId);
+            entity.Property(e => e.PlayerId).ValueGeneratedNever();
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Source).HasConversion<int>();
+            entity.HasIndex(e => e.IsActive).HasDatabaseName("ix_tracked_players_is_active");
+            entity.HasIndex(e => e.Source).HasDatabaseName("ix_tracked_players_source");
         });
     }
 }

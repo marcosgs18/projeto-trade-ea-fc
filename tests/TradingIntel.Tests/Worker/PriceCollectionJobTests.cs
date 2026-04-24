@@ -6,6 +6,8 @@ using TradingIntel.Application.PlayerMarket;
 using TradingIntel.Application.Persistence;
 using TradingIntel.Tests.Worker.Fakes;
 using TradingIntel.Application.JobHealth;
+using TradingIntel.Domain.Models;
+using TradingIntel.Domain.ValueObjects;
 using TradingIntel.Worker.Jobs;
 using Xunit;
 
@@ -13,6 +15,15 @@ namespace TradingIntel.Tests.Worker;
 
 public sealed class PriceCollectionJobTests
 {
+    private static TrackedPlayer Player(long id, string name = "Player") =>
+        new(
+            new PlayerReference(id, name),
+            overall: 84,
+            source: WatchlistSource.Seed,
+            addedAtUtc: DateTime.UtcNow,
+            lastCollectedAtUtc: null,
+            isActive: true);
+
     [Fact]
     public async Task Successful_tick_persists_normalized_snapshots_and_marks_health_success()
     {
@@ -20,17 +31,11 @@ public sealed class PriceCollectionJobTests
         var prices = new CapturingPlayerPriceSnapshotRepository();
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
+        var watchlist = new InMemoryWatchlistRepository();
+        watchlist.Add(Player(1001, "Player A"));
+        watchlist.Add(Player(1002, "Player B"));
 
-        var options = new PriceCollectionOptions
-        {
-            Players = new List<PlayerWatchlistEntry>
-            {
-                new() { PlayerId = 1001, Name = "Player A" },
-                new() { PlayerId = 1002, Name = "Player B" },
-            },
-        };
-
-        var job = BuildJob(market, prices, listings, health, options);
+        var job = BuildJob(market, prices, listings, watchlist, health);
 
         var result = await job.RunTickAsync(CancellationToken.None);
 
@@ -38,6 +43,7 @@ public sealed class PriceCollectionJobTests
         market.CallCount.Should().Be(2);
         prices.Saved.Should().HaveCount(2);
         listings.Saved.Should().HaveCount(2);
+        watchlist.LastTouchedIds.Should().BeEquivalentTo(new[] { 1001L, 1002L });
 
         var snapshot = health.Get(PriceCollectionJob.Name);
         snapshot.Should().NotBeNull();
@@ -51,6 +57,9 @@ public sealed class PriceCollectionJobTests
         var prices = new CapturingPlayerPriceSnapshotRepository();
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
+        var watchlist = new InMemoryWatchlistRepository();
+        watchlist.Add(Player(1001, "Broken"));
+        watchlist.Add(Player(1002, "Ok"));
 
         var market = new FakePlayerMarketClient
         {
@@ -65,22 +74,14 @@ public sealed class PriceCollectionJobTests
             },
         };
 
-        var options = new PriceCollectionOptions
-        {
-            Players = new List<PlayerWatchlistEntry>
-            {
-                new() { PlayerId = 1001, Name = "Broken" },
-                new() { PlayerId = 1002, Name = "Ok" },
-            },
-        };
-
-        var job = BuildJob(market, prices, listings, health, options);
+        var job = BuildJob(market, prices, listings, watchlist, health);
 
         var result = await job.RunTickAsync(CancellationToken.None);
 
         result.Status.Should().Be(TickStatus.Success);
         prices.Saved.Should().HaveCount(1);
         prices.Saved.Single().Player.PlayerId.Should().Be(1002);
+        watchlist.LastTouchedIds.Should().BeEquivalentTo(new[] { 1002L });
     }
 
     [Fact]
@@ -89,6 +90,9 @@ public sealed class PriceCollectionJobTests
         var prices = new CapturingPlayerPriceSnapshotRepository();
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
+        var watchlist = new InMemoryWatchlistRepository();
+        watchlist.Add(Player(1001));
+        watchlist.Add(Player(1002));
 
         var market = new FakePlayerMarketClient
         {
@@ -100,14 +104,9 @@ public sealed class PriceCollectionJobTests
             InitialBackoff = TimeSpan.FromSeconds(1),
             MaxBackoff = TimeSpan.FromSeconds(10),
             BackoffMultiplier = 2.0,
-            Players = new List<PlayerWatchlistEntry>
-            {
-                new() { PlayerId = 1001 },
-                new() { PlayerId = 1002 },
-            },
         };
 
-        var job = BuildJob(market, prices, listings, health, options);
+        var job = BuildJob(market, prices, listings, watchlist, health, options);
 
         var result = await job.RunTickAsync(CancellationToken.None);
 
@@ -126,6 +125,10 @@ public sealed class PriceCollectionJobTests
         var prices = new CapturingPlayerPriceSnapshotRepository();
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
+        var watchlist = new InMemoryWatchlistRepository();
+        watchlist.Add(Player(1001));
+        watchlist.Add(Player(1002));
+
         using var cts = new CancellationTokenSource();
 
         var market = new FakePlayerMarketClient
@@ -138,16 +141,7 @@ public sealed class PriceCollectionJobTests
             },
         };
 
-        var options = new PriceCollectionOptions
-        {
-            Players = new List<PlayerWatchlistEntry>
-            {
-                new() { PlayerId = 1001 },
-                new() { PlayerId = 1002 },
-            },
-        };
-
-        var job = BuildJob(market, prices, listings, health, options);
+        var job = BuildJob(market, prices, listings, watchlist, health);
 
         var result = await job.RunTickAsync(cts.Token);
 
@@ -163,37 +157,36 @@ public sealed class PriceCollectionJobTests
         var prices = new CapturingPlayerPriceSnapshotRepository();
         var listings = new CapturingMarketListingSnapshotRepository();
         var health = new InMemoryJobHealthRegistry();
+        var watchlist = new InMemoryWatchlistRepository();
 
-        var options = new PriceCollectionOptions
-        {
-            Players = new List<PlayerWatchlistEntry>(),
-        };
-
-        var job = BuildJob(market, prices, listings, health, options);
+        var job = BuildJob(market, prices, listings, watchlist, health);
 
         var result = await job.RunTickAsync(CancellationToken.None);
 
         result.Status.Should().Be(TickStatus.Success);
         market.CallCount.Should().Be(0);
         prices.Saved.Should().BeEmpty();
+        watchlist.LastTouchedIds.Should().BeEmpty();
     }
 
     private static PriceCollectionJob BuildJob(
         IPlayerMarketClient market,
         IPlayerPriceSnapshotRepository prices,
         IMarketListingSnapshotRepository listings,
+        IWatchlistRepository watchlist,
         IJobHealthRegistry health,
-        PriceCollectionOptions options)
+        PriceCollectionOptions? options = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(market);
         services.AddScoped(_ => prices);
         services.AddScoped(_ => listings);
+        services.AddSingleton(watchlist);
         var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
 
         return new PriceCollectionJob(
-            Options.Create(options),
+            Options.Create(options ?? new PriceCollectionOptions()),
             scopeFactory,
             health,
             NullLogger<PriceCollectionJob>.Instance);

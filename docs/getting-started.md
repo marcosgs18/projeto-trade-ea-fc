@@ -32,45 +32,42 @@ Rodar a suíte de testes para confirmar que o ambiente está saudável:
 dotnet test TradingIntel.sln --no-build
 ```
 
-Esperado: `Aprovado: 123, Com falha: 0`.
+Esperado: `Aprovado: 133, Com falha: 0`.
 
 ## 3. Configurar a watchlist (jogadores que você quer monitorar)
 
-A coleta de preços e o cálculo de oportunidades operam sobre uma **lista estática** de jogadores. Edite os dois arquivos abaixo — ambos com a **mesma lista** para que o `price-collection` (Worker) e o `opportunity-recompute` (Worker e API) trabalhem casados.
+A watchlist vive na tabela `tracked_players` (SQLite), populada por três fontes com precedência bem definida — detalhe completo em [`docs/watchlist.md`](watchlist.md):
 
-`src/TradingIntel.Worker/appsettings.Development.json`:
+1. Seed JSON versionado: `data/players-catalog.seed.json` (fica no repo, copiado para o output).
+2. Seções legacy `Jobs:PriceCollection:Players` / `Jobs:OpportunityRecompute:Players` em `appsettings` (**deprecated**, lidas uma vez no boot apenas para migrar instalações antigas).
+3. `POST /api/watchlist` em runtime — caminho recomendado para ajustes do dia a dia.
+
+### 3a. Caminho recomendado: `POST /api/watchlist` em runtime
+
+Deixe o seed em paz e adicione os cards que você quer monitorar via API. Primeiro suba a API (passo 5), depois:
+
+```powershell
+$body = '{ "playerId": 231747, "displayName": "Kylian Mbappé (base)", "overall": 94 }'
+curl -Method POST -Uri http://localhost:5078/api/watchlist `
+     -ContentType "application/json" -Body $body
+```
+
+Quer listar o que está sendo monitorado? `GET /api/watchlist`. Remover um card? `DELETE /api/watchlist/{playerId}` (soft-delete — a linha continua na tabela, só fica `IsActive=false`).
+
+### 3b. Alternativa: editar o seed JSON versionado
+
+Abra `data/players-catalog.seed.json` e adicione entradas:
 
 ```jsonc
 {
-  "Jobs": {
-    "PriceCollection": {
-      "Players": [
-        { "PlayerId": 231747, "Name": "Kylian Mbappé (base)", "Overall": 94 }
-        // adicione mais entradas aqui
-      ]
-    },
-    "OpportunityRecompute": {
-      "Players": [
-        { "PlayerId": 231747, "Name": "Kylian Mbappé (base)", "Overall": 94 }
-      ]
-    }
-  }
+  "version": 1,
+  "players": [
+    { "playerId": 231747, "displayName": "Kylian Mbappé (base)", "overall": 94 }
+  ]
 }
 ```
 
-`src/TradingIntel.Api/appsettings.Development.json`:
-
-```jsonc
-{
-  "Jobs": {
-    "OpportunityRecompute": {
-      "Players": [
-        { "PlayerId": 231747, "Name": "Kylian Mbappé (base)", "Overall": 94 }
-      ]
-    }
-  }
-}
-```
+O arquivo é copiado para o output de Api e Worker (`<Content>` nos `.csproj`) e carregado idempotentemente no boot. Operações feitas via API **nunca** são sobrescritas pelo seed.
 
 ### Como descobrir o `PlayerId` correto
 
@@ -150,7 +147,10 @@ A API sobe em `http://localhost:5xxx` (a porta exata aparece no log: `Now listen
 | GET | `/api/market/listings?playerId=<id>` | Listagens (auctions) por janela. |
 | GET | `/api/opportunities` | Oportunidades de trade. Filtros: `minConfidence`, `minNetMargin`, `playerId`, `detectedAfter`. |
 | GET | `/api/opportunities/{id}` | Detalhe da oportunidade (com razões e sugestões de execução). |
-| POST | `/api/opportunities/recompute` | Dispara recompute **síncrono** com a watchlist da API. Body opcional: `{ "playerIds": [231747] }` para limitar a um subconjunto. |
+| POST | `/api/opportunities/recompute` | Dispara recompute **síncrono** sobre `tracked_players` ativos. Body opcional: `{ "playerIds": [231747] }` para limitar a um subconjunto. |
+| GET | `/api/watchlist` | Lista paginada dos jogadores monitorados. Filtros: `includeInactive`, `source`, `minOverall`. |
+| POST | `/api/watchlist` | Adiciona/atualiza jogador na watchlist (marcado como `Source=Api`). |
+| DELETE | `/api/watchlist/{playerId}` | Soft-delete: a linha continua no banco com `IsActive=false`. |
 
 ### Exemplo: ver a oportunidade calculada para um jogador
 
@@ -282,7 +282,7 @@ Na próxima execução do Worker o esquema é recriado e a coleta começa do zer
 | --- | --- | --- |
 | `OpportunityRecompute: done. upserted=0 removedNoEdge=0 skippedOverall=0 skippedPrice=N`, com `N` igual ao tamanho da watchlist | Watchlist do recompute não casa com o que o `price-collection` está coletando, ou `Market:Source` está em uma fonte sem snapshots persistidos. | Verifique que `Market:Source` é o mesmo no Worker e na API e que existem snapshots: `SELECT Source, COUNT(*) FROM player_price_snapshots GROUP BY Source;`. |
 | `OpportunityRecompute: done. ... removedNoEdge=N` sempre que roda | Mercado realmente sem edge (taxa de 5% engole o spread). | Esperado; revise a watchlist incluindo cards com spread bid/buy maior. |
-| `price-collection has no players configured; nothing to collect.` | `Jobs:PriceCollection:Players` está vazio. | Popule a watchlist (passo 3). |
+| `price-collection watchlist is empty (tracked_players has no active rows). Add entries through POST /api/watchlist or the data/players-catalog.seed.json file.` | Tabela `tracked_players` vazia. | Popule a watchlist (passo 3) — via `POST /api/watchlist` ou via seed JSON. |
 | `Failed to fetch FUT.GG SBC detail. ... 429 (Too Many Requests)` | Rate-limit do FUT.GG no detalhamento dos SBCs. | Sem ação; o backoff dos jobs cuida e o restante do pipeline segue. |
 | API responde `404` em `/api/opportunities/<id>` mesmo com a oportunidade existindo no banco | Você passou o `PlayerId` em vez do `OpportunityId` (GUID). | Use o `opportunityId` retornado por `GET /api/opportunities`. |
 | Worker e API não enxergam a mesma base | Cada host está usando um `Data Source=` relativo a um `bin/` diferente. | Use o default (`tradingintel.db` resolvido para a raiz do repositório, conforme `DependencyInjection.AddInfrastructure`). |

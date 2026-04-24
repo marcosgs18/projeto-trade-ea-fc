@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IMarketListingSnapshotRepository, MarketListingSnapshotRepository>();
         services.AddScoped<ISbcChallengeRepository, SbcChallengeRepository>();
         services.AddScoped<ITradeOpportunityRepository, TradeOpportunityRepository>();
+        services.AddScoped<IWatchlistRepository, WatchlistRepository>();
 
         services.AddHttpClient<IFutGgSbcClient, FutGgSbcClient>(client =>
         {
